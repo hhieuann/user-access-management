@@ -6,7 +6,7 @@ import com.r2s.auth.dto.RegisterRequest;
 import com.r2s.auth.entity.Role;
 import com.r2s.auth.entity.User;
 import com.r2s.auth.repository.UserRepository;
-import com.r2s.auth.security.JwtUtil;
+import com.r2s.core.security.JwtUtil;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;

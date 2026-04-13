@@ -1,5 +1,6 @@
 package com.r2s.user.security;
 
+import com.r2s.core.security.JwtUtil;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
 import jakarta.servlet.http.HttpServletRequest;
