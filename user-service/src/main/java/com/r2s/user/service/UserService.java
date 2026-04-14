@@ -2,6 +2,7 @@ package com.r2s.user.service;
 
 import com.r2s.user.dto.UpdateUserRequest;
 import com.r2s.user.dto.UserResponse;
+import com.r2s.user.entity.User;
 import com.r2s.user.repository.UserRepository;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.stereotype.Service;
@@ -39,6 +40,8 @@ public class UserService {
     }
 
     public void deleteUser(String username) {
-        repo.deleteByUsername(username);
+        User user = repo.findByUsername(username)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found"));
+        repo.delete(user);
     }
 }
