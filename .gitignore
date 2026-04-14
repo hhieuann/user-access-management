@@ -37,3 +37,10 @@ build/
 
 ### Mac OS ###
 .DS_Store
+
+### .env ###
+.env
+**/target/
+**/*.iml
+.idea
+.DS_Store

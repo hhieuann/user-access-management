@@ -34,8 +34,8 @@ public class AuthService {
         User user = new User();
         user.setUsername(request.getUsername());
         user.setPassword(passwordEncoder.encode(request.getPassword()));
-        // Lấy role từ request, mặc định là ROLE_USER nếu không truyền
-        user.setRole(request.getRole() != null ? request.getRole() : Role.ROLE_USER);
+        // Public register luôn là ROLE_USER, không nhận role từ request
+        user.setRole(Role.ROLE_USER);
         userRepo.save(user);
     }
 
@@ -49,5 +49,12 @@ public class AuthService {
 
         String token = jwtUtil.generateToken(user.getUsername());
         return new AuthResponse(token);
+    }
+
+    public void assignRole(String username, Role role) {
+        User user = userRepo.findByUsername(username)
+                .orElseThrow(() -> new RuntimeException("User not found"));
+        user.setRole(role);
+        userRepo.save(user);
     }
 }
