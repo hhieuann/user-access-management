@@ -1,0 +1,27 @@
+image: maven:3.9.6-eclipse-temurin-17
+
+stages:
+  - build
+  - test
+
+variables:
+  MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
+
+cache:
+  paths:
+    - .m2/repository
+
+build-job:
+  stage: build
+  tags:
+    - local
+  script:
+    - mvn clean install -DskipTests
+
+test-job:
+  stage: test
+  tags:
+    - local
+  script:
+    - mvn clean install -DskipTests
+    - mvn test -pl user-service
