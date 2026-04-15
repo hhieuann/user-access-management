@@ -23,5 +23,5 @@ test-job:
   tags:
     - local
   script:
-    - mvn clean install -pl core -DskipTests
-    - mvn clean test -pl user-service
+    - mvn clean install -DskipTests
+    - mvn test -pl user-service
