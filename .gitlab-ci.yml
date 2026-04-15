@@ -1,0 +1,70 @@
+image: maven:3.9.6-eclipse-temurin-17
+
+services:
+  - name: postgres:latest
+    alias: postgres-db
+
+variables:
+  POSTGRES_USER: postgres
+  POSTGRES_PASSWORD: 123456
+  AUTH_DB: auth-service
+  USER_DB: user-service
+  SPRING_PROFILES_ACTIVE: ci
+  SPRING_DATASOURCE_URL: jdbc:postgresql://postgres-db:5432/${AUTH_DB}
+  SPRING_DATASOURCE_USERNAME: ${POSTGRES_USER}
+  SPRING_DATASOURCE_PASSWORD: ${POSTGRES_PASSWORD}
+  JWT_SECRET: ciSecretKeyForTestingOnlyDoNotUseInProduction123456
+
+cache:
+  key: maven-cache
+  paths:
+    - .m2/repository
+
+stages:
+  - build
+  - test
+  - deploy
+
+build-job:
+  stage: build
+  tags:
+    - local
+  script:
+    - mvn clean install -DskipTests -Dmaven.repo.local=.m2/repository
+  artifacts:
+    paths:
+      - core/target/*.jar
+      - auth-service/target/*.jar
+      - user-service/target/*.jar
+    expire_in: 1 hour
+
+test-job:
+  stage: test
+  tags:
+    - local
+  before_script:
+    - apt-get update && apt-get install -y curl postgresql-client
+    - curl -sSL https://raw.githubusercontent.com/vishnubob/wait-for-it/master/wait-for-it.sh -o wait-for-it.sh
+    - chmod +x wait-for-it.sh
+    - ./wait-for-it.sh postgres-db:5432 -t 60 -- echo "postgres-db is up"
+    - export PGPASSWORD=$POSTGRES_PASSWORD
+    - |
+      for DB in "$AUTH_DB" "$USER_DB"; do
+        echo "Ensuring database '$DB' exists..."
+        psql -h postgres-db -U $POSTGRES_USER -tc "SELECT 1 FROM pg_database WHERE datname = '$DB'" | grep -q 1 || \
+        psql -h postgres-db -U $POSTGRES_USER -c "CREATE DATABASE \"$DB\""
+      done
+  script:
+    - mvn clean install -pl core -DskipTests
+    - mvn clean test -pl auth-service
+    - mvn clean test -pl user-service
+
+deploy-job:
+  stage: deploy
+  tags:
+    - local
+  only:
+    - main
+  script:
+    - echo "Deploy stage - Docker compose up"
+    - docker compose up --build -d
