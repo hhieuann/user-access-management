@@ -37,7 +37,7 @@ public class UserController {
     @PutMapping("/me")
     public ResponseEntity<UserResponse> updateMyProfile(
             Authentication authentication,
-            @Valid @RequestBody UpdateUserRequest request) {
+            @Valid @RequestBody UpdateUserRequest request) { // ← Thêm @Valid
         return ResponseEntity.ok(
                 userManagementService.updateUser(
                         authentication.getName(), request)
