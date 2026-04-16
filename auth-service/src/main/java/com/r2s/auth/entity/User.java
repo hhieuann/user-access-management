@@ -18,6 +18,12 @@ public class User {
     @Column(nullable = false)
     private String password;
 
+    @Column(name = "full_name")
+    private String fullName;    // ← Thêm
+
+    @Column(unique = true)
+    private String email;       // ← Thêm
+
     @Enumerated(EnumType.STRING)
     private Role role;
 }
