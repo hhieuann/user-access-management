@@ -38,6 +38,13 @@ public class AuthService implements AuthenticationService {
         return new AuthResponse(token);
     }
 
+    @Override
+    public void assignRole(String username, Role role) {
+        User user = findUserOrThrow(username);
+        user.setRole(role);
+        userRepository.save(user);
+    }
+
     private void validateUsernameNotTaken(String username) {
         if (userRepository.findByUsername(username).isPresent()) {
             throw new IllegalArgumentException(
