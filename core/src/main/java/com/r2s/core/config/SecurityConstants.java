@@ -13,7 +13,7 @@ public final class SecurityConstants {
     public static final String[] PUBLIC_URLS = {
             "/auth/register",
             "/auth/login",
-            "/actuator/health"
+            "/actuator/health"  // ← Thêm
     };
 
     // Roles
