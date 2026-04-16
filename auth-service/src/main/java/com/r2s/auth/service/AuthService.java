@@ -3,58 +3,67 @@ package com.r2s.auth.service;
 import com.r2s.auth.dto.AuthResponse;
 import com.r2s.auth.dto.LoginRequest;
 import com.r2s.auth.dto.RegisterRequest;
-import com.r2s.auth.entity.Role;
-import com.r2s.auth.entity.User;
+import com.r2s.auth.entity.User;              // ← Dùng entity của auth-service
+import com.r2s.auth.entity.Role;              // ← Dùng Role của auth-service
 import com.r2s.auth.repository.UserRepository;
 import com.r2s.core.security.JwtUtil;
+import lombok.RequiredArgsConstructor;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 
 @Service
-public class AuthService {
+@RequiredArgsConstructor
+public class AuthService implements AuthenticationService {
 
-    private final UserRepository userRepo;
+    private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
 
-    public AuthService(UserRepository userRepo,
-                       PasswordEncoder passwordEncoder,
-                       JwtUtil jwtUtil) {
-        this.userRepo = userRepo;
-        this.passwordEncoder = passwordEncoder;
-        this.jwtUtil = jwtUtil;
-    }
-
-    public void register(RegisterRequest request) {
-        if (userRepo.findByUsername(request.getUsername()).isPresent())
-            throw new RuntimeException("Username exists");
-
-        User user = new User();
-        user.setUsername(request.getUsername());
-        user.setPassword(passwordEncoder.encode(request.getPassword()));
-        // Public register luôn là ROLE_USER, không nhận role từ request
-        user.setRole(Role.ROLE_USER);
-        userRepo.save(user);
-    }
-
-    public AuthResponse login(LoginRequest request) {
-        User user = userRepo.findByUsername(request.getUsername())
-                .orElseThrow(() -> new UsernameNotFoundException("Not found"));
-
-        // So sánh password nhập vào với password đã mã hóa trong DB
-        if (!passwordEncoder.matches(request.getPassword(), user.getPassword()))
-            throw new BadCredentialsException("Invalid password");
-
+    @Override
+    public AuthResponse register(RegisterRequest request) {
+        validateUsernameNotTaken(request.getUsername());
+        User user = buildNewUser(request);
+        userRepository.save(user);
         String token = jwtUtil.generateToken(user.getUsername());
         return new AuthResponse(token);
     }
 
-    public void assignRole(String username, Role role) {
-        User user = userRepo.findByUsername(username)
-                .orElseThrow(() -> new RuntimeException("User not found"));
-        user.setRole(role);
-        userRepo.save(user);
+    @Override
+    public AuthResponse login(LoginRequest request) {
+        User user = findUserOrThrow(request.getUsername());
+        verifyPassword(request.getPassword(), user.getPassword());
+        String token = jwtUtil.generateToken(user.getUsername());
+        return new AuthResponse(token);
+    }
+
+    private void validateUsernameNotTaken(String username) {
+        if (userRepository.findByUsername(username).isPresent()) {
+            throw new IllegalArgumentException(
+                    "Username already exists: " + username);
+        }
+    }
+
+    private User buildNewUser(RegisterRequest request) {
+        User user = new User();
+        user.setUsername(request.getUsername());
+        user.setPassword(passwordEncoder.encode(request.getPassword()));
+        user.setFullName(request.getFullName());  // ← Thêm
+        user.setEmail(request.getEmail());        // ← Thêm
+        user.setRole(Role.ROLE_USER);
+        return user;
+    }
+
+    private User findUserOrThrow(String username) {
+        return userRepository.findByUsername(username)
+                .orElseThrow(() -> new UsernameNotFoundException(
+                        "User not found: " + username));
+    }
+
+    private void verifyPassword(String raw, String encoded) {
+        if (!passwordEncoder.matches(raw, encoded)) {
+            throw new BadCredentialsException("Invalid password");
+        }
     }
 }

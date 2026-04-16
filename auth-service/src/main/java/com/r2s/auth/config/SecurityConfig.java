@@ -1,6 +1,7 @@
 package com.r2s.auth.config;
 
 import com.r2s.auth.security.JwtFilter;
+import com.r2s.core.config.SecurityConstants;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.springframework.security.config.annotation.method.configuration.EnableMethodSecurity;
@@ -31,8 +32,8 @@ public class SecurityConfig {
         http
                 .csrf(csrf -> csrf.disable()) // Tắt CSRF vì dùng JWT
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers("/auth/**").permitAll() // Cho phép truy cập không cần login
-                        .anyRequest().authenticated()            // Các route khác cần login
+                        .requestMatchers(SecurityConstants.PUBLIC_URLS).permitAll()
+                        .anyRequest().authenticated()
                 )
                 .sessionManagement(session -> session
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS) // Không dùng session

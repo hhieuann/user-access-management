@@ -116,17 +116,18 @@ class UserServiceTest {
     // === TEST deleteUser() - success ===
     @Test
     void deleteUser_shouldDeleteIfExists() {
+        // Arrange
         User mockUser = createTestUser();
-
         Mockito.when(userRepository.findByUsername("john"))
                 .thenReturn(Optional.of(mockUser));
+        doNothing().when(userRepository).deleteByUsername("john");
 
+        // Act
         userService.deleteUser("john");
 
-        Mockito.verify(userRepository, Mockito.times(1))
-                .findByUsername("john");
-        Mockito.verify(userRepository, Mockito.times(1))
-                .delete(mockUser);
+        // Assert - verify đúng method đang dùng
+        verify(userRepository, times(1)).findByUsername("john");
+        verify(userRepository, times(1)).deleteByUsername("john"); // ← Sửa từ delete() thành deleteByUsername()
     }
 
     // === TEST deleteUser() - not found ===
