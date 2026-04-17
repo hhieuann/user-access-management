@@ -1,2 +1,3 @@
--- Tạo thêm database cho user-service
+-- Tao database cho tung service
+CREATE DATABASE "auth-service";
 CREATE DATABASE "user-service";
