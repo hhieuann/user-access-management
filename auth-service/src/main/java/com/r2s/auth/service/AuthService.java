@@ -8,6 +8,7 @@ import com.r2s.auth.entity.Role;              // ← Dùng Role của auth-servi
 import com.r2s.auth.repository.UserRepository;
 import com.r2s.core.security.JwtUtil;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
@@ -15,6 +16,7 @@ import org.springframework.stereotype.Service;
 
 @Service
 @RequiredArgsConstructor
+@Slf4j
 public class AuthService implements AuthenticationService {
 
     private final UserRepository userRepository;
@@ -23,32 +25,38 @@ public class AuthService implements AuthenticationService {
 
     @Override
     public AuthResponse register(RegisterRequest request) {
+        log.info("Registering new user: {}", request.getUsername());
         validateUsernameNotTaken(request.getUsername());
         User user = buildNewUser(request);
         userRepository.save(user);
+        log.info("User registered successfully: {}", request.getUsername());
         String token = jwtUtil.generateToken(user.getUsername());
         return new AuthResponse(token);
     }
 
     @Override
     public AuthResponse login(LoginRequest request) {
+        log.info("Login attempt for user: {}", request.getUsername());
         User user = findUserOrThrow(request.getUsername());
         verifyPassword(request.getPassword(), user.getPassword());
+        log.info("User logged in successfully: {}", request.getUsername());
         String token = jwtUtil.generateToken(user.getUsername());
         return new AuthResponse(token);
     }
 
     @Override
     public void assignRole(String username, Role role) {
+        log.info("Assigning role {} to user: {}", role, username); // ← Thêm log
         User user = findUserOrThrow(username);
         user.setRole(role);
         userRepository.save(user);
+        log.info("Role assigned successfully to user: {}", username); // ← Thêm log
     }
 
     private void validateUsernameNotTaken(String username) {
         if (userRepository.findByUsername(username).isPresent()) {
-            throw new IllegalArgumentException(
-                    "Username already exists: " + username);
+            log.warn("Registration failed - username already exists: {}", username);
+            throw new IllegalArgumentException("Username already exists: " + username);
         }
     }
 
