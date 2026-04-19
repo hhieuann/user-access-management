@@ -5,7 +5,9 @@ import com.r2s.auth.dto.LoginRequest;
 import com.r2s.auth.dto.RegisterRequest;
 import com.r2s.auth.entity.User;              // ← Dùng entity của auth-service
 import com.r2s.auth.entity.Role;              // ← Dùng Role của auth-service
+import com.r2s.auth.kafka.UserEventProducer;
 import com.r2s.auth.repository.UserRepository;
+import com.r2s.core.event.UserRegisteredEvent;
 import com.r2s.core.security.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
@@ -22,6 +24,7 @@ public class AuthService implements AuthenticationService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
+    private final UserEventProducer userEventProducer; // ← Thêm
 
     @Override
     public AuthResponse register(RegisterRequest request) {
@@ -30,6 +33,17 @@ public class AuthService implements AuthenticationService {
         User user = buildNewUser(request);
         userRepository.save(user);
         log.info("User registered successfully: {}", request.getUsername());
+
+        // Publish event sang Kafka
+        UserRegisteredEvent event = new UserRegisteredEvent(
+                user.getUsername(),
+                user.getPassword(),
+                user.getFullName(),
+                user.getEmail(),
+                com.r2s.core.entity.Role.valueOf(user.getRole().name())
+        );
+        userEventProducer.sendUserRegisteredEvent(event);
+
         String token = jwtUtil.generateToken(user.getUsername());
         return new AuthResponse(token);
     }
