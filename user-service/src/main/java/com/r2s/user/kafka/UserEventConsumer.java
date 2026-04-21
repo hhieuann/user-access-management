@@ -23,19 +23,16 @@ public class UserEventConsumer {
     public void handleUserRegistered(UserRegisteredEvent event) {
         log.info("Received UserRegistered event: {}", event.getUsername());
 
-        // Kiểm tra user đã tồn tại chưa
         if (userRepository.findByUsername(event.getUsername()).isPresent()) {
             log.warn("User already exists in user-service: {}", event.getUsername());
             return;
         }
 
-        // Tạo user trong user-service DB
         User user = new User();
         user.setUsername(event.getUsername());
-        user.setPassword(event.getPassword()); // Đã được hash từ auth-service
-        user.setFullName(event.getFullName());
-        user.setEmail(event.getEmail());
+        user.setPassword(event.getPassword());
         user.setRole(Role.valueOf(event.getRole().name()));
+        // fullName và email = null, user sẽ update sau qua PUT /users/me
 
         userRepository.save(user);
         log.info("User synced to user-service: {}", event.getUsername());

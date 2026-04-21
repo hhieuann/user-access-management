@@ -38,8 +38,6 @@ public class AuthService implements AuthenticationService {
         UserRegisteredEvent event = new UserRegisteredEvent(
                 user.getUsername(),
                 user.getPassword(),
-                user.getFullName(),
-                user.getEmail(),
                 com.r2s.core.entity.Role.valueOf(user.getRole().name())
         );
         userEventProducer.sendUserRegisteredEvent(event);
@@ -78,8 +76,6 @@ public class AuthService implements AuthenticationService {
         User user = new User();
         user.setUsername(request.getUsername());
         user.setPassword(passwordEncoder.encode(request.getPassword()));
-        user.setFullName(request.getFullName());  // ← Thêm
-        user.setEmail(request.getEmail());        // ← Thêm
         user.setRole(Role.ROLE_USER);
         return user;
     }
