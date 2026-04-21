@@ -65,4 +65,76 @@
             </dependency>
         </dependencies>
     </dependencyManagement>
+
+    <!-- build: cấu hình các plugin chạy trong quá trình build -->
+    <!-- Plugin khai báo ở đây sẽ tự áp dụng cho TẤT CẢ module con -->
+    <build>
+        <plugins>
+            <!-- JaCoCo: đo code coverage cho unit test -->
+            <!-- Yêu cầu coverage tối thiểu 85% (theo feedback của thầy) -->
+            <plugin>
+                <groupId>org.jacoco</groupId>
+                <artifactId>jacoco-maven-plugin</artifactId>
+                <version>0.8.12</version>
+
+                <!-- Excludes ở cấp plugin: loại class khỏi instrumentation
+                     ngay từ đầu, không tính vào coverage -->
+                <configuration>
+                    <excludes>
+                        <exclude>**/dto/**</exclude>
+                        <exclude>**/entity/**</exclude>
+                        <exclude>**/config/**</exclude>
+                        <exclude>**/*Application*</exclude>
+                        <exclude>**/security/**</exclude>
+                        <exclude>**/controller/**</exclude>
+                    </excludes>
+                </configuration>
+
+                <executions>
+                    <!-- Bước 1: gắn agent vào JVM để theo dõi code khi test chạy -->
+                    <execution>
+                        <id>prepare-agent</id>
+                        <goals>
+                            <goal>prepare-agent</goal>
+                        </goals>
+                    </execution>
+
+                    <!-- Bước 2: tạo report HTML sau khi test xong -->
+                    <!-- Xem report ở: target/site/jacoco/index.html -->
+                    <execution>
+                        <id>report</id>
+                        <phase>test</phase>
+                        <goals>
+                            <goal>report</goal>
+                        </goals>
+                    </execution>
+
+                    <!-- Bước 3: kiểm tra coverage có đạt 85% không -->
+                    <!-- Nếu thấp hơn → build FAIL -->
+                    <execution>
+                        <id>check</id>
+                        <phase>verify</phase>
+                        <goals>
+                            <goal>check</goal>
+                        </goals>
+                        <configuration>
+                            <rules>
+                                <rule>
+                                    <element>BUNDLE</element>
+                                    <limits>
+                                        <!-- Coverage tối thiểu 85% theo dòng code -->
+                                        <limit>
+                                            <counter>LINE</counter>
+                                            <value>COVEREDRATIO</value>
+                                            <minimum>0.85</minimum>
+                                        </limit>
+                                    </limits>
+                                </rule>
+                            </rules>
+                        </configuration>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
 </project>
