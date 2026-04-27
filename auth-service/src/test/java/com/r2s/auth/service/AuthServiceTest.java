@@ -18,6 +18,9 @@ import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
 
 import java.util.Optional;
 
@@ -27,6 +30,7 @@ import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
+@org.mockito.junit.jupiter.MockitoSettings(strictness = org.mockito.quality.Strictness.LENIENT)
 class AuthServiceTest {
 
     @Mock
@@ -63,6 +67,18 @@ class AuthServiceTest {
         existingUser.setUsername("newuser");
         existingUser.setPassword("encodedPassword");
         existingUser.setRole(Role.ROLE_USER);
+
+        // Mock SecurityContext mặc định (admin đăng nhập)
+        Authentication auth = mock(Authentication.class);
+        when(auth.getName()).thenReturn("admin");
+        SecurityContext securityContext = mock(SecurityContext.class);
+        when(securityContext.getAuthentication()).thenReturn(auth);
+        SecurityContextHolder.setContext(securityContext);
+    }
+
+    @org.junit.jupiter.api.AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
     }
 
     // ==================== REGISTER TESTS ====================
@@ -152,7 +168,15 @@ class AuthServiceTest {
     @Test
     @DisplayName("TC006 - AssignRole: Happy case - assign ADMIN to existing user")
     void assignRole_HappyCase_UpdatesRole() {
-        // Given
+        // Given - mock SecurityContext (admin đang đăng nhập là "admin", không phải "newuser")
+        org.springframework.security.core.Authentication auth =
+                org.mockito.Mockito.mock(org.springframework.security.core.Authentication.class);
+        when(auth.getName()).thenReturn("admin");
+        org.springframework.security.core.context.SecurityContext securityContext =
+                org.mockito.Mockito.mock(org.springframework.security.core.context.SecurityContext.class);
+        when(securityContext.getAuthentication()).thenReturn(auth);
+        org.springframework.security.core.context.SecurityContextHolder.setContext(securityContext);
+
         when(userRepository.findByUsername("newuser")).thenReturn(Optional.of(existingUser));
         when(userRepository.save(any(User.class))).thenReturn(existingUser);
 
@@ -162,12 +186,23 @@ class AuthServiceTest {
         // Then
         assertEquals(Role.ROLE_ADMIN, existingUser.getRole());
         verify(userRepository, times(1)).save(existingUser);
+
+        // Cleanup
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
     }
 
     @Test
     @DisplayName("TC007 - AssignRole: Worst case - non-existent user should throw exception")
     void assignRole_WhenUserNotFound_ThrowsException() {
-        // Given
+        // Given - mock SecurityContext
+        org.springframework.security.core.Authentication auth =
+                org.mockito.Mockito.mock(org.springframework.security.core.Authentication.class);
+        when(auth.getName()).thenReturn("admin");
+        org.springframework.security.core.context.SecurityContext securityContext =
+                org.mockito.Mockito.mock(org.springframework.security.core.context.SecurityContext.class);
+        when(securityContext.getAuthentication()).thenReturn(auth);
+        org.springframework.security.core.context.SecurityContextHolder.setContext(securityContext);
+
         when(userRepository.findByUsername("newuser")).thenReturn(Optional.empty());
 
         // When & Then
@@ -176,5 +211,8 @@ class AuthServiceTest {
                 () -> authService.assignRole("newuser", Role.ROLE_ADMIN)
         );
         verify(userRepository, never()).save(any(User.class));
+
+        // Cleanup
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
     }
 }
