@@ -31,7 +31,7 @@ public class SecurityConfig {
                 .sessionManagement(s -> s
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
-                        .requestMatchers(SecurityConstants.PUBLIC_URLS).permitAll()
+                        .requestMatchers("/moderator/**").hasAnyRole("MODERATOR", "ADMIN")
                         .anyRequest().authenticated())
                 .addFilterBefore(rateLimitFilter,
                         UsernamePasswordAuthenticationFilter.class) // ← Thêm trước JwtFilter
