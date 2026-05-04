@@ -16,16 +16,28 @@ import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.security.authentication.BadCredentialsException;
+<<<<<<< HEAD
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
+=======
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.crypto.password.PasswordEncoder;
+import org.springframework.security.core.Authentication;
+import org.springframework.security.core.context.SecurityContext;
+import org.springframework.security.core.context.SecurityContextHolder;
+>>>>>>> main
 
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
+<<<<<<< HEAD
+=======
+import static org.mockito.ArgumentMatchers.anyString;
+>>>>>>> main
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -66,6 +78,11 @@ class AuthServiceTest {
         existingUser.setUsername("newuser");
         existingUser.setPassword("encodedPassword");
         existingUser.setRole(Role.ROLE_USER);
+<<<<<<< HEAD
+=======
+
+        // Mock SecurityContext mặc định (admin đăng nhập)
+>>>>>>> main
         Authentication auth = mock(Authentication.class);
         when(auth.getName()).thenReturn("admin");
         SecurityContext securityContext = mock(SecurityContext.class);
@@ -73,6 +90,14 @@ class AuthServiceTest {
         SecurityContextHolder.setContext(securityContext);
     }
 
+<<<<<<< HEAD
+=======
+    @org.junit.jupiter.api.AfterEach
+    void tearDown() {
+        SecurityContextHolder.clearContext();
+    }
+
+>>>>>>> main
     // ==================== REGISTER TESTS ====================
 
     @Test
@@ -160,7 +185,19 @@ class AuthServiceTest {
     @Test
     @DisplayName("TC006 - AssignRole: Happy case - assign ADMIN to existing user")
     void assignRole_HappyCase_UpdatesRole() {
+<<<<<<< HEAD
         // Given
+=======
+        // Given - mock SecurityContext (admin đang đăng nhập là "admin", không phải "newuser")
+        org.springframework.security.core.Authentication auth =
+                org.mockito.Mockito.mock(org.springframework.security.core.Authentication.class);
+        when(auth.getName()).thenReturn("admin");
+        org.springframework.security.core.context.SecurityContext securityContext =
+                org.mockito.Mockito.mock(org.springframework.security.core.context.SecurityContext.class);
+        when(securityContext.getAuthentication()).thenReturn(auth);
+        org.springframework.security.core.context.SecurityContextHolder.setContext(securityContext);
+
+>>>>>>> main
         when(userRepository.findByUsername("newuser")).thenReturn(Optional.of(existingUser));
         when(userRepository.save(any(User.class))).thenReturn(existingUser);
 
@@ -170,12 +207,30 @@ class AuthServiceTest {
         // Then
         assertEquals(Role.ROLE_ADMIN, existingUser.getRole());
         verify(userRepository, times(1)).save(existingUser);
+<<<<<<< HEAD
+=======
+
+        // Cleanup
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+>>>>>>> main
     }
 
     @Test
     @DisplayName("TC007 - AssignRole: Worst case - non-existent user should throw exception")
     void assignRole_WhenUserNotFound_ThrowsException() {
+<<<<<<< HEAD
         // Given
+=======
+        // Given - mock SecurityContext
+        org.springframework.security.core.Authentication auth =
+                org.mockito.Mockito.mock(org.springframework.security.core.Authentication.class);
+        when(auth.getName()).thenReturn("admin");
+        org.springframework.security.core.context.SecurityContext securityContext =
+                org.mockito.Mockito.mock(org.springframework.security.core.context.SecurityContext.class);
+        when(securityContext.getAuthentication()).thenReturn(auth);
+        org.springframework.security.core.context.SecurityContextHolder.setContext(securityContext);
+
+>>>>>>> main
         when(userRepository.findByUsername("newuser")).thenReturn(Optional.empty());
 
         // When & Then
@@ -184,6 +239,7 @@ class AuthServiceTest {
                 () -> authService.assignRole("newuser", Role.ROLE_ADMIN)
         );
         verify(userRepository, never()).save(any(User.class));
+<<<<<<< HEAD
     }
 
     // ==================== TC020-TC024: REGISTER VALIDATION ====================
@@ -366,5 +422,10 @@ class AuthServiceTest {
         // Then
         assertEquals(Role.ROLE_MODERATOR, existingUser.getRole());
         verify(userRepository, times(1)).save(existingUser);
+=======
+
+        // Cleanup
+        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+>>>>>>> main
     }
 }

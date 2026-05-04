@@ -2,19 +2,14 @@ package com.r2s.user.dto;
 
 import jakarta.validation.constraints.Email;
 import jakarta.validation.constraints.Size;
+import lombok.Data;
 
+@Data
 public class UpdateUserRequest {
-
-    @Size(max = 100, message = "Full name must not exceed 100 characters")
+    @Size(max = 100)
     private String fullName;
 
-    @Email(message = "Invalid email format")
+    @Email(message = "Email format is invalid")
+    @Size(max = 100)
     private String email;
-
-    // Getters and Setters
-    public String getEmail() { return email; }
-    public void setEmail(String email) { this.email = email; }
-
-    public String getFullName() { return fullName; }
-    public void setFullName(String fullName) { this.fullName = fullName; }
 }

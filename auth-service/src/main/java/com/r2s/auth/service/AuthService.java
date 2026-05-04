@@ -60,12 +60,20 @@ public class AuthService implements AuthenticationService {
     public void assignRole(String username, Role role) {
         log.info("Assigning role {} to user: {}", role, username);
 
+<<<<<<< HEAD
         // 1. Validate role null TRƯỚC khi query DB
+=======
+        // TC028: Không cho phép role null
+>>>>>>> main
         if (role == null) {
             throw new IllegalArgumentException("Role cannot be null");
         }
 
+<<<<<<< HEAD
         // 2. Check admin tự đổi role mình
+=======
+        // TC029: Admin không được tự đổi role của chính mình
+>>>>>>> main
         String currentUsername = org.springframework.security.core.context.SecurityContextHolder
                 .getContext().getAuthentication().getName();
         if (currentUsername.equals(username)) {
@@ -74,13 +82,17 @@ public class AuthService implements AuthenticationService {
             );
         }
 
+<<<<<<< HEAD
         // 3. Sau đó mới tìm user
+=======
+>>>>>>> main
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
 
         user.setRole(role);
         userRepository.save(user);
         log.info("Role assigned successfully");
+<<<<<<< HEAD
     }
 
     private void validateUsernameNotTaken(String username) {
@@ -88,6 +100,8 @@ public class AuthService implements AuthenticationService {
             log.warn("Registration failed - username already exists: {}", username);
             throw new IllegalArgumentException("Username already exists: " + username);
         }
+=======
+>>>>>>> main
     }
 
     private User buildNewUser(RegisterRequest request) {
@@ -107,6 +121,13 @@ public class AuthService implements AuthenticationService {
     private void verifyPassword(String raw, String encoded) {
         if (!passwordEncoder.matches(raw, encoded)) {
             throw new BadCredentialsException("Invalid password");
+        }
+    }
+
+    private void validateUsernameNotTaken(String username) {
+        if (userRepository.findByUsername(username).isPresent()) {
+            log.warn("Registration failed - username already exists: {}", username);
+            throw new IllegalArgumentException("Username already exists: " + username);
         }
     }
 }

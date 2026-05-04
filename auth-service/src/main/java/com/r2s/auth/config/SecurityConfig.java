@@ -31,8 +31,12 @@ public class SecurityConfig {
                 .sessionManagement(s -> s
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
+<<<<<<< HEAD
                         .requestMatchers(SecurityConstants.PUBLIC_URLS).permitAll()
                         .requestMatchers("/moderator/**").hasAnyRole("MODERATOR", "ADMIN")  // ← Thêm dòng này
+=======
+                        .requestMatchers("/moderator/**").hasAnyRole("MODERATOR", "ADMIN")
+>>>>>>> main
                         .anyRequest().authenticated())
                 .addFilterBefore(rateLimitFilter,
                         UsernamePasswordAuthenticationFilter.class)

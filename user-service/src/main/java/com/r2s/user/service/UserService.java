@@ -1,11 +1,16 @@
 package com.r2s.user.service;
 
+import com.r2s.core.event.UserDeletedEvent;
 import com.r2s.user.dto.UpdateUserRequest;
 import com.r2s.user.dto.UserResponse;
 import com.r2s.user.entity.User;              // ← Dùng entity của user-service
+<<<<<<< HEAD
 import com.r2s.core.event.UserDeletedEvent;
+=======
+>>>>>>> main
 import com.r2s.user.kafka.UserDeletedEventProducer;
 import com.r2s.user.repository.UserRepository;
+import jakarta.transaction.Transactional;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -20,7 +25,11 @@ import java.util.stream.Collectors;
 public class UserService implements UserManagementService {
 
     private final UserRepository userRepository;
+<<<<<<< HEAD
     private final UserDeletedEventProducer userDeletedEventProducer;
+=======
+    private final UserDeletedEventProducer  userDeletedEventProducer;
+>>>>>>> main
 
     @Override
     public List<UserResponse> getAllUsers() {
@@ -53,6 +62,7 @@ public class UserService implements UserManagementService {
     }
 
     @Override
+    @Transactional
     public void deleteUser(String username) {
         log.info("Deleting user: {}", username);
 

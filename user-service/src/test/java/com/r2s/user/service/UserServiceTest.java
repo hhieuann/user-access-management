@@ -4,6 +4,7 @@ import com.r2s.user.dto.UpdateUserRequest;
 import com.r2s.user.dto.UserResponse;
 import com.r2s.user.entity.Role;
 import com.r2s.user.entity.User;
+import com.r2s.user.kafka.UserDeletedEventProducer;
 import com.r2s.user.repository.UserRepository;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -33,6 +34,8 @@ class UserServiceTest {
 
     @Mock
     private UserRepository userRepository;
+    @Mock
+    private UserDeletedEventProducer userDeletedEventProducer;
 
     @Mock
     private UserDeletedEventProducer userDeletedEventProducer;
@@ -181,7 +184,7 @@ class UserServiceTest {
     // ==================== DELETE USER ====================
 
     @Test
-    @DisplayName("TC016 - DeleteUser: Happy case - delete existing user")
+    @DisplayName("TC016 - DeleteUser: Happy case - delete existing user and publish event")
     void deleteUser_HappyCase_DeletesUser() {
         // Given
         when(userRepository.findByUsername("john")).thenReturn(Optional.of(user1));
@@ -192,6 +195,8 @@ class UserServiceTest {
 
         // Then
         verify(userRepository, times(1)).deleteByUsername("john");
+        verify(userDeletedEventProducer, times(1))
+                .sendUserDeletedEvent(any(com.r2s.core.event.UserDeletedEvent.class));
     }
 
     @Test
