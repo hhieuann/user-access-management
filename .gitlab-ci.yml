@@ -1,27 +1,48 @@
-image: maven:3.9.6-eclipse-temurin-17
-
 stages:
   - build
   - test
+  - deploy
 
 variables:
   MAVEN_OPTS: "-Dmaven.repo.local=.m2/repository"
 
-cache:
-  paths:
-    - .m2/repository
-
 build-job:
   stage: build
-  tags:
-    - local
   script:
     - mvn clean install -DskipTests
+  artifacts:
+    paths:
+      - "*/target/*.jar"
+    expire_in: 1 hour
 
 test-job:
   stage: test
-  tags:
-    - local
   script:
-    - mvn clean install -DskipTests
-    - mvn test -pl user-service
+    - mvn test "-Dspring.profiles.active=ci"
+  dependencies:
+    - build-job
+
+deploy-job:
+  stage: deploy
+  only:
+    - main
+    - feature/additional-tests
+  script:
+    - echo "Building JAR files first..."
+    - mvn clean package -DskipTests
+    - echo "Logging in to Docker Hub..."
+    - echo $env:DOCKERHUB_TOKEN | docker login -u $env:DOCKERHUB_USERNAME --password-stdin
+    - echo "Building auth-service image..."
+    - docker build -t "$env:DOCKERHUB_USERNAME/auth-service:latest" ./auth-service
+    - docker build -t "$env:DOCKERHUB_USERNAME/auth-service:$env:CI_COMMIT_SHORT_SHA" ./auth-service
+    - echo "Building user-service image..."
+    - docker build -t "$env:DOCKERHUB_USERNAME/user-service:latest" ./user-service
+    - docker build -t "$env:DOCKERHUB_USERNAME/user-service:$env:CI_COMMIT_SHORT_SHA" ./user-service
+    - echo "Pushing images to Docker Hub..."
+    - docker push "$env:DOCKERHUB_USERNAME/auth-service:latest"
+    - docker push "$env:DOCKERHUB_USERNAME/auth-service:$env:CI_COMMIT_SHORT_SHA"
+    - docker push "$env:DOCKERHUB_USERNAME/user-service:latest"
+    - docker push "$env:DOCKERHUB_USERNAME/user-service:$env:CI_COMMIT_SHORT_SHA"
+    - echo "Deploy successful!"
+  dependencies:
+    - build-job
