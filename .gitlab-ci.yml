@@ -9,7 +9,7 @@ variables:
 build-job:
   stage: build
   tags:
-    - windows-local-runner
+    - local
   script:
     - mvn clean install -DskipTests
   artifacts:
@@ -20,7 +20,7 @@ build-job:
 test-job:
   stage: test
   tags:
-    - windows-local-runner
+    - local
   script:
     - mvn test "-Dspring.profiles.active=ci"
   dependencies:
@@ -29,7 +29,7 @@ test-job:
 deploy-job:
   stage: deploy
   tags:
-    - windows-local-runner
+    - local
   only:
     - main
     - feature/additional-tests
