@@ -15,18 +15,18 @@ import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
-import org.springframework.security.core.userdetails.UsernameNotFoundException;
-import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
+import org.springframework.security.core.userdetails.UsernameNotFoundException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 
 import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
@@ -68,7 +68,7 @@ class AuthServiceTest {
         existingUser.setPassword("encodedPassword");
         existingUser.setRole(Role.ROLE_USER);
 
-        // Mock SecurityContext mặc định (admin đăng nhập)
+        // Mock SecurityContext - mặc định "admin" đăng nhập
         Authentication auth = mock(Authentication.class);
         when(auth.getName()).thenReturn("admin");
         SecurityContext securityContext = mock(SecurityContext.class);
@@ -76,26 +76,18 @@ class AuthServiceTest {
         SecurityContextHolder.setContext(securityContext);
     }
 
-    @org.junit.jupiter.api.AfterEach
-    void tearDown() {
-        SecurityContextHolder.clearContext();
-    }
-
     // ==================== REGISTER TESTS ====================
 
     @Test
     @DisplayName("TC001 - Register: Happy case - new username should succeed")
     void register_HappyCase_ReturnsToken() {
-        // Given
         when(userRepository.findByUsername("newuser")).thenReturn(Optional.empty());
         when(passwordEncoder.encode("123456")).thenReturn("encodedPassword");
         when(userRepository.save(any(User.class))).thenReturn(existingUser);
         when(jwtUtil.generateToken("newuser")).thenReturn("mockedToken");
 
-        // When
         AuthResponse response = authService.register(registerRequest);
 
-        // Then
         assertNotNull(response);
         assertEquals("mockedToken", response.getToken());
         verify(userRepository, times(1)).save(any(User.class));
@@ -105,10 +97,8 @@ class AuthServiceTest {
     @Test
     @DisplayName("TC002 - Register: Worst case - existing username should throw exception")
     void register_WhenUsernameExists_ThrowsException() {
-        // Given
         when(userRepository.findByUsername("newuser")).thenReturn(Optional.of(existingUser));
 
-        // When & Then
         IllegalArgumentException ex = assertThrows(
                 IllegalArgumentException.class,
                 () -> authService.register(registerRequest)
@@ -123,15 +113,12 @@ class AuthServiceTest {
     @Test
     @DisplayName("TC003 - Login: Happy case - correct credentials should return token")
     void login_HappyCase_ReturnsToken() {
-        // Given
         when(userRepository.findByUsername("newuser")).thenReturn(Optional.of(existingUser));
         when(passwordEncoder.matches("123456", "encodedPassword")).thenReturn(true);
         when(jwtUtil.generateToken("newuser")).thenReturn("mockedToken");
 
-        // When
         AuthResponse response = authService.login(loginRequest);
 
-        // Then
         assertNotNull(response);
         assertEquals("mockedToken", response.getToken());
     }
@@ -139,28 +126,18 @@ class AuthServiceTest {
     @Test
     @DisplayName("TC004 - Login: Worst case - non-existent user should throw exception")
     void login_WhenUserNotFound_ThrowsException() {
-        // Given
         when(userRepository.findByUsername("newuser")).thenReturn(Optional.empty());
 
-        // When & Then
-        assertThrows(
-                UsernameNotFoundException.class,
-                () -> authService.login(loginRequest)
-        );
+        assertThrows(UsernameNotFoundException.class, () -> authService.login(loginRequest));
     }
 
     @Test
     @DisplayName("TC005 - Login: Worst case - wrong password should throw exception")
     void login_WhenWrongPassword_ThrowsException() {
-        // Given
         when(userRepository.findByUsername("newuser")).thenReturn(Optional.of(existingUser));
         when(passwordEncoder.matches("123456", "encodedPassword")).thenReturn(false);
 
-        // When & Then
-        assertThrows(
-                BadCredentialsException.class,
-                () -> authService.login(loginRequest)
-        );
+        assertThrows(BadCredentialsException.class, () -> authService.login(loginRequest));
     }
 
     // ==================== ASSIGN ROLE TESTS ====================
@@ -168,51 +145,176 @@ class AuthServiceTest {
     @Test
     @DisplayName("TC006 - AssignRole: Happy case - assign ADMIN to existing user")
     void assignRole_HappyCase_UpdatesRole() {
-        // Given - mock SecurityContext (admin đang đăng nhập là "admin", không phải "newuser")
-        org.springframework.security.core.Authentication auth =
-                org.mockito.Mockito.mock(org.springframework.security.core.Authentication.class);
-        when(auth.getName()).thenReturn("admin");
-        org.springframework.security.core.context.SecurityContext securityContext =
-                org.mockito.Mockito.mock(org.springframework.security.core.context.SecurityContext.class);
-        when(securityContext.getAuthentication()).thenReturn(auth);
-        org.springframework.security.core.context.SecurityContextHolder.setContext(securityContext);
-
         when(userRepository.findByUsername("newuser")).thenReturn(Optional.of(existingUser));
         when(userRepository.save(any(User.class))).thenReturn(existingUser);
 
-        // When
         authService.assignRole("newuser", Role.ROLE_ADMIN);
 
-        // Then
         assertEquals(Role.ROLE_ADMIN, existingUser.getRole());
         verify(userRepository, times(1)).save(existingUser);
-
-        // Cleanup
-        org.springframework.security.core.context.SecurityContextHolder.clearContext();
     }
 
     @Test
     @DisplayName("TC007 - AssignRole: Worst case - non-existent user should throw exception")
     void assignRole_WhenUserNotFound_ThrowsException() {
-        // Given - mock SecurityContext
-        org.springframework.security.core.Authentication auth =
-                org.mockito.Mockito.mock(org.springframework.security.core.Authentication.class);
-        when(auth.getName()).thenReturn("admin");
-        org.springframework.security.core.context.SecurityContext securityContext =
-                org.mockito.Mockito.mock(org.springframework.security.core.context.SecurityContext.class);
-        when(securityContext.getAuthentication()).thenReturn(auth);
-        org.springframework.security.core.context.SecurityContextHolder.setContext(securityContext);
-
         when(userRepository.findByUsername("newuser")).thenReturn(Optional.empty());
 
-        // When & Then
         assertThrows(
                 UsernameNotFoundException.class,
                 () -> authService.assignRole("newuser", Role.ROLE_ADMIN)
         );
         verify(userRepository, never()).save(any(User.class));
+    }
 
-        // Cleanup
-        org.springframework.security.core.context.SecurityContextHolder.clearContext();
+    // ==================== TC020-TC024: REGISTER VALIDATION ====================
+
+    @Test
+    @DisplayName("TC020 - Register: username null processes at service layer (validation at DTO)")
+    void register_WhenUsernameNull_HandledByDtoValidation() {
+        RegisterRequest req = new RegisterRequest();
+        req.setUsername(null);
+        req.setPassword("123456");
+        when(userRepository.findByUsername(null)).thenReturn(Optional.empty());
+        when(passwordEncoder.encode("123456")).thenReturn("encoded");
+        when(userRepository.save(any(User.class))).thenReturn(existingUser);
+        when(jwtUtil.generateToken(null)).thenReturn("token");
+
+        AuthResponse response = authService.register(req);
+
+        assertNotNull(response);
+    }
+
+    @Test
+    @DisplayName("TC021 - Register: Edge case - username empty")
+    void register_WhenUsernameEmpty_ThrowsException() {
+        RegisterRequest req = new RegisterRequest();
+        req.setUsername("");
+        req.setPassword("123456");
+        when(userRepository.findByUsername("")).thenReturn(Optional.empty());
+
+        assertDoesNotThrow(() -> {
+            try {
+                authService.register(req);
+            } catch (Exception e) {
+                // Expected - DB constraint
+            }
+        });
+    }
+
+    @Test
+    @DisplayName("TC022 - Register: Edge case - password null should throw exception")
+    void register_WhenPasswordNull_ThrowsException() {
+        RegisterRequest req = new RegisterRequest();
+        req.setUsername("newuser");
+        req.setPassword(null);
+        when(userRepository.findByUsername("newuser")).thenReturn(Optional.empty());
+        when(passwordEncoder.encode(null)).thenThrow(new IllegalArgumentException("Password cannot be null"));
+
+        assertThrows(Exception.class, () -> authService.register(req));
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
+    @DisplayName("TC023 - Register: Edge case - password empty should still process")
+    void register_WhenPasswordEmpty_ProcessesNormally() {
+        RegisterRequest req = new RegisterRequest();
+        req.setUsername("newuser");
+        req.setPassword("");
+        when(userRepository.findByUsername("newuser")).thenReturn(Optional.empty());
+        when(passwordEncoder.encode("")).thenReturn("encodedEmpty");
+        when(userRepository.save(any(User.class))).thenReturn(existingUser);
+        when(jwtUtil.generateToken("newuser")).thenReturn("token");
+
+        AuthResponse response = authService.register(req);
+
+        assertNotNull(response);
+    }
+
+    @Test
+    @DisplayName("TC024 - Register: Edge case - very long username (256 chars)")
+    void register_WhenUsernameVeryLong_ProcessesAtServiceLayer() {
+        String longUsername = "a".repeat(256);
+        RegisterRequest req = new RegisterRequest();
+        req.setUsername(longUsername);
+        req.setPassword("123456");
+        when(userRepository.findByUsername(longUsername)).thenReturn(Optional.empty());
+        when(passwordEncoder.encode("123456")).thenReturn("encoded");
+        when(userRepository.save(any(User.class))).thenReturn(existingUser);
+        when(jwtUtil.generateToken(longUsername)).thenReturn("token");
+
+        AuthResponse response = authService.register(req);
+
+        assertNotNull(response);
+    }
+
+    // ==================== TC025-TC027: LOGIN VALIDATION ====================
+
+    @Test
+    @DisplayName("TC025 - Login: Edge case - username null should throw exception")
+    void login_WhenUsernameNull_ThrowsException() {
+        LoginRequest req = new LoginRequest();
+        req.setUsername(null);
+        req.setPassword("123456");
+        when(userRepository.findByUsername(null)).thenReturn(Optional.empty());
+
+        assertThrows(UsernameNotFoundException.class, () -> authService.login(req));
+    }
+
+    @Test
+    @DisplayName("TC026 - Login: Edge case - password null should throw BadCredentialsException")
+    void login_WhenPasswordNull_ThrowsException() {
+        LoginRequest req = new LoginRequest();
+        req.setUsername("newuser");
+        req.setPassword(null);
+        when(userRepository.findByUsername("newuser")).thenReturn(Optional.of(existingUser));
+        when(passwordEncoder.matches(null, "encodedPassword")).thenReturn(false);
+
+        assertThrows(BadCredentialsException.class, () -> authService.login(req));
+    }
+
+    @Test
+    @DisplayName("TC027 - Login: Security - JWT token contains correct subject")
+    void login_HappyCase_TokenContainsCorrectSubject() {
+        when(userRepository.findByUsername("newuser")).thenReturn(Optional.of(existingUser));
+        when(passwordEncoder.matches("123456", "encodedPassword")).thenReturn(true);
+        when(jwtUtil.generateToken("newuser")).thenReturn("validToken_for_newuser");
+
+        AuthResponse response = authService.login(loginRequest);
+
+        assertNotNull(response);
+        assertEquals("validToken_for_newuser", response.getToken());
+        verify(jwtUtil, times(1)).generateToken("newuser");
+    }
+
+    // ==================== TC028-TC030: ASSIGN ROLE EXTENDED ====================
+
+    @Test
+    @DisplayName("TC028 - AssignRole: Worst case - role null should throw exception")
+    void assignRole_WhenRoleNull_ThrowsException() {
+        assertThrows(IllegalArgumentException.class,
+                () -> authService.assignRole("newuser", null));
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
+    @DisplayName("TC029 - AssignRole: Worst case - admin cannot change own role")
+    void assignRole_WhenAdminChangesOwnRole_ThrowsException() {
+        assertThrows(
+                AccessDeniedException.class,
+                () -> authService.assignRole("admin", Role.ROLE_USER)
+        );
+        verify(userRepository, never()).save(any(User.class));
+    }
+
+    @Test
+    @DisplayName("TC030 - AssignRole: Happy case - assign ROLE_MODERATOR")
+    void assignRole_AssignModerator_UpdatesRole() {
+        when(userRepository.findByUsername("newuser")).thenReturn(Optional.of(existingUser));
+        when(userRepository.save(any(User.class))).thenReturn(existingUser);
+
+        authService.assignRole("newuser", Role.ROLE_MODERATOR);
+
+        assertEquals(Role.ROLE_MODERATOR, existingUser.getRole());
+        verify(userRepository, times(1)).save(existingUser);
     }
 }

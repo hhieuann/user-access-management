@@ -3,15 +3,17 @@ package com.r2s.auth.service;
 import com.r2s.auth.dto.AuthResponse;
 import com.r2s.auth.dto.LoginRequest;
 import com.r2s.auth.dto.RegisterRequest;
-import com.r2s.auth.entity.User;              // ← Dùng entity của auth-service
-import com.r2s.auth.entity.Role;              // ← Dùng Role của auth-service
+import com.r2s.auth.entity.User;
+import com.r2s.auth.entity.Role;
 import com.r2s.auth.kafka.UserEventProducer;
 import com.r2s.auth.repository.UserRepository;
 import com.r2s.core.event.UserRegisteredEvent;
 import com.r2s.core.security.JwtUtil;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
+import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
@@ -24,7 +26,7 @@ public class AuthService implements AuthenticationService {
     private final UserRepository userRepository;
     private final PasswordEncoder passwordEncoder;
     private final JwtUtil jwtUtil;
-    private final UserEventProducer userEventProducer; // ← Thêm
+    private final UserEventProducer userEventProducer;
 
     @Override
     public AuthResponse register(RegisterRequest request) {
@@ -60,20 +62,21 @@ public class AuthService implements AuthenticationService {
     public void assignRole(String username, Role role) {
         log.info("Assigning role {} to user: {}", role, username);
 
-        // TC028: Không cho phép role null
+        // TC028: Validate role null TRƯỚC khi query DB
         if (role == null) {
             throw new IllegalArgumentException("Role cannot be null");
         }
 
         // TC029: Admin không được tự đổi role của chính mình
-        String currentUsername = org.springframework.security.core.context.SecurityContextHolder
+        String currentUsername = SecurityContextHolder
                 .getContext().getAuthentication().getName();
         if (currentUsername.equals(username)) {
-            throw new org.springframework.security.access.AccessDeniedException(
+            throw new AccessDeniedException(
                     "Admin cannot change their own role"
             );
         }
 
+        // Sau đó mới tìm user
         User user = userRepository.findByUsername(username)
                 .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
 
