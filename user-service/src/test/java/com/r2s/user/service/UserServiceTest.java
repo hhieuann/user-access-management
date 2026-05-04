@@ -37,8 +37,6 @@ class UserServiceTest {
     @Mock
     private UserDeletedEventProducer userDeletedEventProducer;
 
-    @Mock
-    private UserDeletedEventProducer userDeletedEventProducer;
 
     @InjectMocks
     private UserService userService;
