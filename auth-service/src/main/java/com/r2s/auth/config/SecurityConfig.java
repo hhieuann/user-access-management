@@ -32,9 +32,10 @@ public class SecurityConfig {
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(SecurityConstants.PUBLIC_URLS).permitAll()
+                        .requestMatchers("/moderator/**").hasAnyRole("MODERATOR", "ADMIN")  // ← Thêm dòng này
                         .anyRequest().authenticated())
                 .addFilterBefore(rateLimitFilter,
-                        UsernamePasswordAuthenticationFilter.class) // ← Thêm trước JwtFilter
+                        UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtFilter,
                         UsernamePasswordAuthenticationFilter.class);
         return http.build();

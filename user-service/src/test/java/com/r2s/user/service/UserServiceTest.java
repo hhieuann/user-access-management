@@ -26,7 +26,6 @@ import static org.mockito.Mockito.*;
 import static org.junit.jupiter.api.Assertions.assertFalse;
 import static org.mockito.Mockito.doThrow;
 
-import com.r2s.core.event.UserDeletedEvent;
 import com.r2s.user.kafka.UserDeletedEventProducer;
 
 @ExtendWith(MockitoExtension.class)
