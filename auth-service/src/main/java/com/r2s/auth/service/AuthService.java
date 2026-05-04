@@ -58,11 +58,29 @@ public class AuthService implements AuthenticationService {
 
     @Override
     public void assignRole(String username, Role role) {
-        log.info("Assigning role {} to user: {}", role, username); // ← Thêm log
-        User user = findUserOrThrow(username);
+        log.info("Assigning role {} to user: {}", role, username);
+
+        // 1. Validate role null TRƯỚC khi query DB
+        if (role == null) {
+            throw new IllegalArgumentException("Role cannot be null");
+        }
+
+        // 2. Check admin tự đổi role mình
+        String currentUsername = org.springframework.security.core.context.SecurityContextHolder
+                .getContext().getAuthentication().getName();
+        if (currentUsername.equals(username)) {
+            throw new org.springframework.security.access.AccessDeniedException(
+                    "Admin cannot change their own role"
+            );
+        }
+
+        // 3. Sau đó mới tìm user
+        User user = userRepository.findByUsername(username)
+                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
+
         user.setRole(role);
         userRepository.save(user);
-        log.info("Role assigned successfully to user: {}", username); // ← Thêm log
+        log.info("Role assigned successfully");
     }
 
     private void validateUsernameNotTaken(String username) {
