@@ -37,18 +37,14 @@ deploy-job:
     - echo "Building JAR files first..."
     - mvn clean package -DskipTests
     - echo "Logging in to Docker Hub..."
-    - echo $env:DOCKERHUB_TOKEN | docker login -u $env:DOCKERHUB_USERNAME --password-stdin
+    - docker login -u $env:DOCKERHUB_USERNAME -p $env:DOCKERHUB_TOKEN
     - echo "Building auth-service image..."
-    - docker build -t "$env:DOCKERHUB_USERNAME/auth-service:latest" ./auth-service
-    - docker build -t "$env:DOCKERHUB_USERNAME/auth-service:$env:CI_COMMIT_SHORT_SHA" ./auth-service
+    - docker build -t "$($env:DOCKERHUB_USERNAME)/auth-service:latest" ./auth-service
     - echo "Building user-service image..."
-    - docker build -t "$env:DOCKERHUB_USERNAME/user-service:latest" ./user-service
-    - docker build -t "$env:DOCKERHUB_USERNAME/user-service:$env:CI_COMMIT_SHORT_SHA" ./user-service
+    - docker build -t "$($env:DOCKERHUB_USERNAME)/user-service:latest" ./user-service
     - echo "Pushing images to Docker Hub..."
-    - docker push "$env:DOCKERHUB_USERNAME/auth-service:latest"
-    - docker push "$env:DOCKERHUB_USERNAME/auth-service:$env:CI_COMMIT_SHORT_SHA"
-    - docker push "$env:DOCKERHUB_USERNAME/user-service:latest"
-    - docker push "$env:DOCKERHUB_USERNAME/user-service:$env:CI_COMMIT_SHORT_SHA"
+    - docker push "$($env:DOCKERHUB_USERNAME)/auth-service:latest"
+    - docker push "$($env:DOCKERHUB_USERNAME)/user-service:latest"
     - echo "Deploy successful!"
   dependencies:
     - build-job
