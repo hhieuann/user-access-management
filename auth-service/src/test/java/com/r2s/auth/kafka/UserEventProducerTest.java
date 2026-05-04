@@ -10,10 +10,9 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import org.springframework.kafka.core.KafkaTemplate;
 
-import static org.mockito.ArgumentMatchers.any;
-import static org.mockito.ArgumentMatchers.eq;
-import static org.mockito.Mockito.times;
-import static org.mockito.Mockito.verify;
+import static org.junit.jupiter.api.Assertions.assertThrows;
+import static org.mockito.ArgumentMatchers.*;
+import static org.mockito.Mockito.*;
 
 @ExtendWith(MockitoExtension.class)
 class UserEventProducerTest {
@@ -36,5 +35,18 @@ class UserEventProducerTest {
         // Then
         verify(kafkaTemplate, times(1))
                 .send(eq("user-registered-topic"), eq("newuser"), eq(event));
+    }
+
+    @Test
+    @DisplayName("TC031 - SendEvent: Worst case - Kafka send failure throws exception")
+    void sendUserRegisteredEvent_WhenKafkaFails_ThrowsException() {
+        // Given
+        UserRegisteredEvent event = new UserRegisteredEvent("newuser", "encodedPass", com.r2s.core.entity.Role.ROLE_USER);
+        when(kafkaTemplate.send(anyString(), anyString(), any(UserRegisteredEvent.class)))
+                .thenThrow(new RuntimeException("Kafka broker unavailable"));
+
+        // When & Then
+        assertThrows(RuntimeException.class,
+                () -> userEventProducer.sendUserRegisteredEvent(event));
     }
 }
