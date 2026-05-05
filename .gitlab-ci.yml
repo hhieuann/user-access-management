@@ -28,11 +28,10 @@ test-job:
 
 deploy-job:
   stage: deploy
-  tags:
-    - local
   only:
     - main
-    - feature/additional-tests
+  tags:
+    - local
   script:
     - echo "Building JAR files first..."
     - mvn clean package -DskipTests
