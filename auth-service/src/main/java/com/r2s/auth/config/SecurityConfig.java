@@ -22,7 +22,7 @@ import org.springframework.security.web.authentication.UsernamePasswordAuthentic
 public class SecurityConfig {
 
     private final JwtFilter jwtFilter;
-    private final RateLimitFilter rateLimitFilter; // ← Thêm
+    private final RateLimitFilter rateLimitFilter;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -32,7 +32,7 @@ public class SecurityConfig {
                         .sessionCreationPolicy(SessionCreationPolicy.STATELESS))
                 .authorizeHttpRequests(auth -> auth
                         .requestMatchers(SecurityConstants.PUBLIC_URLS).permitAll()
-                        .requestMatchers("/moderator/**").hasAnyRole("MODERATOR", "ADMIN")  // ← Thêm dòng này
+                        .requestMatchers("/moderator/**").hasAnyRole("MODERATOR", "ADMIN")
                         .anyRequest().authenticated())
                 .addFilterBefore(rateLimitFilter,
                         UsernamePasswordAuthenticationFilter.class)
@@ -45,5 +45,4 @@ public class SecurityConfig {
     public PasswordEncoder passwordEncoder() {
         return new BCryptPasswordEncoder();
     }
-
 }
