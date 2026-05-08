@@ -5,7 +5,6 @@
          https://maven.apache.org/xsd/maven-4.0.0.xsd">
     <modelVersion>4.0.0</modelVersion>
 
-    <!-- Kế thừa từ Spring Boot để tự động quản lý version các dependency -->
     <parent>
         <groupId>org.springframework.boot</groupId>
         <artifactId>spring-boot-starter-parent</artifactId>
@@ -17,10 +16,8 @@
     <artifactId>user-access-management</artifactId>
     <version>0.0.1-SNAPSHOT</version>
 
-    <!-- packaging = pom nghĩa là đây là project cha, không build thành JAR -->
     <packaging>pom</packaging>
 
-    <!-- Khai báo các module con, Maven sẽ build theo thứ tự này -->
     <modules>
         <module>core</module>
         <module>auth-service</module>
@@ -31,8 +28,6 @@
         <java.version>17</java.version>
     </properties>
 
-    <!-- dependencyManagement: định nghĩa version tập trung -->
-    <!-- Các module con dùng dependency này sẽ không cần ghi version nữa -->
     <dependencyManagement>
         <dependencies>
             <dependency>
@@ -47,7 +42,6 @@
                 <version>42.7.3</version>
             </dependency>
 
-            <!-- Thêm JWT versions vào đây -->
             <dependency>
                 <groupId>io.jsonwebtoken</groupId>
                 <artifactId>jjwt-api</artifactId>
@@ -66,19 +60,14 @@
         </dependencies>
     </dependencyManagement>
 
-    <!-- build: cấu hình các plugin chạy trong quá trình build -->
-    <!-- Plugin khai báo ở đây sẽ tự áp dụng cho TẤT CẢ module con -->
     <build>
         <plugins>
             <!-- JaCoCo: đo code coverage cho unit test -->
-            <!-- Yêu cầu coverage tối thiểu 85% (theo feedback của thầy) -->
             <plugin>
                 <groupId>org.jacoco</groupId>
                 <artifactId>jacoco-maven-plugin</artifactId>
                 <version>0.8.12</version>
 
-                <!-- Excludes ở cấp plugin: loại class khỏi instrumentation
-                     ngay từ đầu, không tính vào coverage -->
                 <configuration>
                     <excludes>
                         <exclude>**/dto/**</exclude>
@@ -91,7 +80,6 @@
                 </configuration>
 
                 <executions>
-                    <!-- Bước 1: gắn agent vào JVM để theo dõi code khi test chạy -->
                     <execution>
                         <id>prepare-agent</id>
                         <goals>
@@ -99,8 +87,6 @@
                         </goals>
                     </execution>
 
-                    <!-- Bước 2: tạo report HTML sau khi test xong -->
-                    <!-- Xem report ở: target/site/jacoco/index.html -->
                     <execution>
                         <id>report</id>
                         <phase>test</phase>
@@ -109,8 +95,6 @@
                         </goals>
                     </execution>
 
-                    <!-- Bước 3: kiểm tra coverage có đạt 85% không -->
-                    <!-- Nếu thấp hơn → build FAIL -->
                     <execution>
                         <id>check</id>
                         <phase>verify</phase>
@@ -122,7 +106,6 @@
                                 <rule>
                                     <element>BUNDLE</element>
                                     <limits>
-                                        <!-- Coverage tối thiểu 85% theo dòng code -->
                                         <limit>
                                             <counter>LINE</counter>
                                             <value>COVEREDRATIO</value>
@@ -134,6 +117,15 @@
                         </configuration>
                     </execution>
                 </executions>
+            </plugin>
+
+            <!-- Surefire Report Plugin: tạo HTML test report -->
+            <!-- Xem report ở: target/reports/surefire.html sau khi chạy -->
+            <!-- mvn surefire-report:report -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-surefire-report-plugin</artifactId>
+                <version>3.5.2</version>
             </plugin>
         </plugins>
     </build>

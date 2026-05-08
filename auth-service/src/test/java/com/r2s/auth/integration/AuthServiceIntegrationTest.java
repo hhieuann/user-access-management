@@ -18,8 +18,6 @@ import org.springframework.security.core.Authentication;
 import org.springframework.security.core.context.SecurityContext;
 import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.test.context.ActiveProfiles;
-import org.springframework.test.context.bean.override.mockito.MockitoBean;
-import org.springframework.transaction.annotation.Transactional;
 
 import java.util.Optional;
 
@@ -27,6 +25,13 @@ import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
+/**
+ * Integration Test sử dụng H2 in-memory database (mode PostgreSQL).
+ *
+ * Note: Đã setup Testcontainers + PostgreSQL nhưng gặp conflict
+ * với Docker Desktop version 29.4.0 (mới release 2026).
+ * Tạm dùng H2 mode PostgreSQL để mô phỏng behavior của PostgreSQL thật.
+ */
 @SpringBootTest
 @ActiveProfiles("test")
 @DisplayName("Integration Test: AuthService + Repository + DB")
@@ -43,10 +48,9 @@ class AuthServiceIntegrationTest {
 
     @BeforeEach
     void setUp() {
-        // Clean DB trước mỗi test
         userRepository.deleteAll();
 
-        // Mock SecurityContext
+        // Mock SecurityContext (admin đăng nhập)
         Authentication auth = mock(Authentication.class);
         when(auth.getName()).thenReturn("admin");
         SecurityContext securityContext = mock(SecurityContext.class);
@@ -55,21 +59,21 @@ class AuthServiceIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT001 - Register: User được lưu vào DB H2 thật và query lại tìm thấy")
+    @DisplayName("IT001 - Register: User được lưu vào DB và query lại tìm thấy")
     void register_SavesToDbAndCanBeFound() {
-        // Given
+        // Arrange
         RegisterRequest request = new RegisterRequest();
         request.setUsername("integration_user");
         request.setPassword("password123");
 
-        // When
+        // Act
         AuthResponse response = authService.register(request);
 
-        // Then - verify response
+        // Assert
         assertNotNull(response);
         assertNotNull(response.getToken());
 
-        // Verify DB - user thực sự tồn tại trong H2
+        // Verify: data thực sự được persist trong DB
         Optional<User> savedUser = userRepository.findByUsername("integration_user");
         assertTrue(savedUser.isPresent());
         assertEquals("integration_user", savedUser.get().getUsername());
@@ -81,28 +85,27 @@ class AuthServiceIntegrationTest {
     @Test
     @DisplayName("IT002 - Register: Duplicate username throws exception")
     void register_WhenDuplicateUsername_ThrowsException() {
-        // Given - đăng ký user lần 1
+        // Arrange
         RegisterRequest request = new RegisterRequest();
         request.setUsername("duplicate_user");
         request.setPassword("password123");
         authService.register(request);
 
-        // When - đăng ký user lần 2 với cùng username
         RegisterRequest duplicate = new RegisterRequest();
         duplicate.setUsername("duplicate_user");
         duplicate.setPassword("anotherpassword");
 
-        // Then - throw exception
+        // Act & Assert
         IllegalArgumentException ex = assertThrows(
                 IllegalArgumentException.class,
                 () -> authService.register(duplicate)
         );
         assertTrue(ex.getMessage().contains("already exists"));
 
-        // Verify DB - chỉ có 1 user
+        // Verify: DB chỉ có 1 user
         long count = userRepository.findAll().stream()
                 .filter(u -> "duplicate_user".equals(u.getUsername()))
                 .count();
-        assertEquals(1, count, "DB chỉ có 1 user duplicate_user");
+        assertEquals(1, count);
     }
 }

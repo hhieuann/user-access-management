@@ -7,6 +7,7 @@ import com.r2s.auth.entity.Role;
 import com.r2s.auth.entity.User;
 import com.r2s.auth.kafka.UserEventProducer;
 import com.r2s.auth.repository.UserRepository;
+import com.r2s.core.event.UserRegisteredEvent;
 import com.r2s.core.security.JwtUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -79,19 +80,39 @@ class AuthServiceTest {
     // ==================== REGISTER TESTS ====================
 
     @Test
-    @DisplayName("TC001 - Register: Happy case - new username should succeed")
+    @DisplayName("TC001 - Register: Happy case - new username should succeed (with ArgumentCaptor)")
     void register_HappyCase_ReturnsToken() {
+        // Arrange
         when(userRepository.findByUsername("newuser")).thenReturn(Optional.empty());
         when(passwordEncoder.encode("123456")).thenReturn("encodedPassword");
         when(userRepository.save(any(User.class))).thenReturn(existingUser);
         when(jwtUtil.generateToken("newuser")).thenReturn("mockedToken");
 
+        // Act
         AuthResponse response = authService.register(registerRequest);
 
+        // Assert response
         assertNotNull(response);
         assertEquals("mockedToken", response.getToken());
-        verify(userRepository, times(1)).save(any(User.class));
-        verify(userEventProducer, times(1)).sendUserRegisteredEvent(any());
+
+        // Verify với ArgumentCaptor: capture User object để check chi tiết
+        org.mockito.ArgumentCaptor<User> userCaptor =
+                org.mockito.ArgumentCaptor.forClass(User.class);
+        verify(userRepository).save(userCaptor.capture());
+
+        User capturedUser = userCaptor.getValue();
+        assertEquals("newuser", capturedUser.getUsername(), "Username phải đúng");
+        assertEquals("encodedPassword", capturedUser.getPassword(), "Password phải được encode");
+        assertEquals(Role.ROLE_USER, capturedUser.getRole(), "Role mặc định phải là ROLE_USER");
+
+        // Verify event được publish 1 lần với đúng username
+        org.mockito.ArgumentCaptor<UserRegisteredEvent> eventCaptor =
+                org.mockito.ArgumentCaptor.forClass(UserRegisteredEvent.class);
+        verify(userEventProducer, times(1)).sendUserRegisteredEvent(eventCaptor.capture());
+        assertEquals("newuser", eventCaptor.getValue().getUsername());
+
+        // verifyNoMoreInteractions: đảm bảo không có method nào khác bị gọi ngoài ý muốn
+        verifyNoMoreInteractions(userEventProducer);
     }
 
     @Test
