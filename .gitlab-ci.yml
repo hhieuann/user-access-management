@@ -33,14 +33,16 @@ deploy-job:
   tags:
     - local
   script:
-    - echo "Building JAR files first..."
-    - mvn clean package -DskipTests
+    - echo "Verifying current commit..."
+    - git log -1 --pretty=format:"%H %s"
+    - echo "Building JAR files (with tests)..."
+    - mvn clean install
     - echo "Logging in to Docker Hub..."
     - docker login -u $env:DOCKERHUB_USERNAME -p $env:DOCKERHUB_TOKEN
-    - echo "Building auth-service image..."
-    - docker build -t "$($env:DOCKERHUB_USERNAME)/auth-service:latest" ./auth-service
-    - echo "Building user-service image..."
-    - docker build -t "$($env:DOCKERHUB_USERNAME)/user-service:latest" ./user-service
+    - echo "Building auth-service image (no cache)..."
+    - docker build --no-cache --pull -t "$($env:DOCKERHUB_USERNAME)/auth-service:latest" ./auth-service
+    - echo "Building user-service image (no cache)..."
+    - docker build --no-cache --pull -t "$($env:DOCKERHUB_USERNAME)/user-service:latest" ./user-service
     - echo "Pushing images to Docker Hub..."
     - docker push "$($env:DOCKERHUB_USERNAME)/auth-service:latest"
     - docker push "$($env:DOCKERHUB_USERNAME)/user-service:latest"
