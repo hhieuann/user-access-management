@@ -44,7 +44,7 @@ services:
       start_period: 30s
 
   auth-service:
-    build: ./auth-service
+    image: hhieuann/auth-service:latest
     ports:
       - "8081:8081"
     depends_on:
@@ -61,7 +61,7 @@ services:
       SPRING_KAFKA_BOOTSTRAP_SERVERS: kafka:29092
 
   user-service:
-    build: ./user-service
+    image:  hhieuann/user-service:latest
     ports:
       - "8082:8082"
     depends_on:
