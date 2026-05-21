@@ -1,5 +1,6 @@
 package com.r2s.user.config;
 
+import com.r2s.core.config.SecurityConstants;
 import com.r2s.user.security.JwtFilter;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
@@ -31,6 +32,8 @@ public class SecurityConfig {
         http
                 .csrf(csrf -> csrf.disable())
                 .authorizeHttpRequests(auth -> auth
+                        // Actuator public (thong nhat voi auth-service qua SecurityConstants).
+                        .requestMatchers(SecurityConstants.ACTUATOR_PUBLIC_URLS).permitAll()
                         .requestMatchers("/users/public/**").permitAll()
                         .anyRequest().authenticated()
                 )
