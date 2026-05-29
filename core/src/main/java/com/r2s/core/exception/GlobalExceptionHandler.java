@@ -1,5 +1,6 @@
 package com.r2s.core.exception;
 
+import com.r2s.core.response.ApiResponse;
 import org.springframework.http.HttpStatus;
 import org.springframework.http.ResponseEntity;
 import org.springframework.security.access.AccessDeniedException;
@@ -10,66 +11,74 @@ import org.springframework.web.bind.MethodArgumentNotValidException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 
-import java.time.LocalDateTime;
-import java.util.HashMap;
-import java.util.Map;
-
+/**
+ * Centralized exception handler cho toan he thong.
+ *
+ * <p>Convert mọi exception thanh {@link ApiResponse} format thong nhat.
+ * Map status code dung theo loai loi (4xx vs 5xx, conflict vs bad request...).
+ */
 @RestControllerAdvice
 public class GlobalExceptionHandler {
 
-    // 1. Bắt CustomException
+    // 1. Domain exception: duplicate -> 409 Conflict (semantic dung hon 400)
+    @ExceptionHandler({DuplicateUsernameException.class, DuplicateEmailException.class})
+    public ResponseEntity<ApiResponse<Void>> handleDuplicate(BusinessException ex) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    // 2. Other business exceptions -> 400 Bad Request
+    @ExceptionHandler(BusinessException.class)
+    public ResponseEntity<ApiResponse<Void>> handleBusiness(BusinessException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(ex.getMessage()));
+    }
+
+    // 3. Legacy CustomException -> 400
     @ExceptionHandler(CustomException.class)
-    public ResponseEntity<Map<String, Object>> handleCustom(CustomException ex) {
-        return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
+    public ResponseEntity<ApiResponse<Void>> handleCustom(CustomException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(ex.getMessage()));
     }
 
-    // 2. Bắt IllegalArgumentException (vd: duplicate username)
+    // 4. IllegalArgumentException -> 400
     @ExceptionHandler(IllegalArgumentException.class)
-    public ResponseEntity<Map<String, Object>> handleIllegalArgument(IllegalArgumentException ex) {
-        return buildResponse(HttpStatus.BAD_REQUEST, ex.getMessage());
+    public ResponseEntity<ApiResponse<Void>> handleIllegalArgument(IllegalArgumentException ex) {
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(ex.getMessage()));
     }
 
-    // 3. Bắt lỗi validation @Valid
+    // 5. Validation @Valid -> 400
     @ExceptionHandler(MethodArgumentNotValidException.class)
-    public ResponseEntity<Map<String, Object>> handleValidation(MethodArgumentNotValidException ex) {
+    public ResponseEntity<ApiResponse<Void>> handleValidation(MethodArgumentNotValidException ex) {
         String message = ex.getBindingResult()
                 .getFieldErrors()
                 .stream()
                 .map(e -> e.getField() + ": " + e.getDefaultMessage())
                 .findFirst()
                 .orElse("Validation failed");
-        return buildResponse(HttpStatus.BAD_REQUEST, message);
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ApiResponse.error(message));
     }
 
-    // 4. Bắt lỗi đăng nhập sai (wrong password / user not found)
-    @ExceptionHandler({
-            BadCredentialsException.class,
-            UsernameNotFoundException.class
-    })
-    public ResponseEntity<Map<String, Object>> handleBadCredentials(Exception ex) {
-        return buildResponse(HttpStatus.UNAUTHORIZED, "Invalid username or password");
+    // 6. Wrong credential -> 401
+    @ExceptionHandler({BadCredentialsException.class, UsernameNotFoundException.class})
+    public ResponseEntity<ApiResponse<Void>> handleBadCredentials(Exception ex) {
+        return ResponseEntity.status(HttpStatus.UNAUTHORIZED)
+                .body(ApiResponse.error("Invalid username or password"));
     }
 
-    // 5. Bắt lỗi 403
-    @ExceptionHandler({
-            AccessDeniedException.class,
-            AuthorizationDeniedException.class
-    })
-    public ResponseEntity<Map<String, Object>> handleAccessDenied(Exception ex) {
-        return buildResponse(HttpStatus.FORBIDDEN, "Access denied");
+    // 7. Access denied -> 403
+    @ExceptionHandler({AccessDeniedException.class, AuthorizationDeniedException.class})
+    public ResponseEntity<ApiResponse<Void>> handleAccessDenied(Exception ex) {
+        return ResponseEntity.status(HttpStatus.FORBIDDEN)
+                .body(ApiResponse.error("Access denied"));
     }
 
-    // 6. Bắt tất cả lỗi còn lại - đặt CUỐI CÙNG
+    // 8. Catch-all -> 500
     @ExceptionHandler(Exception.class)
-    public ResponseEntity<Map<String, Object>> handleAll(Exception ex) {
-        return buildResponse(HttpStatus.INTERNAL_SERVER_ERROR, "An unexpected error occurred");
-    }
-
-    private ResponseEntity<Map<String, Object>> buildResponse(HttpStatus status, String message) {
-        Map<String, Object> body = new HashMap<>();
-        body.put("timestamp", LocalDateTime.now().toString());
-        body.put("status", status.value());
-        body.put("message", message);
-        return ResponseEntity.status(status).body(body);
+    public ResponseEntity<ApiResponse<Void>> handleAll(Exception ex) {
+        return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
+                .body(ApiResponse.error("An unexpected error occurred"));
     }
 }
