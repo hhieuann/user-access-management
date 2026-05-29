@@ -1,12 +1,10 @@
-package com.r2s.user.service;
+package com.r2s.user.service.profile;
 
-import com.r2s.core.event.UserDeletedEvent;
 import com.r2s.user.dto.UpdateUserRequest;
 import com.r2s.user.dto.UserResponse;
 import com.r2s.user.entity.User;
-import com.r2s.user.kafka.UserDeletedEventProducer;
 import com.r2s.user.repository.UserRepository;
-import jakarta.transaction.Transactional;
+import com.r2s.user.service.validation.UserValidationService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
@@ -15,13 +13,19 @@ import org.springframework.stereotype.Service;
 import java.util.List;
 import java.util.stream.Collectors;
 
+/**
+ * Implementation cua {@link UserProfileService} - quan ly profile cua user.
+ *
+ * <p>Tach rieng theo SRP: class nay chi lo cac thao tac doc/sua profile.
+ * Cac thao tac admin (delete) o {@link com.r2s.user.service.management.UserManagementServiceImpl}.
+ */
 @Service
 @RequiredArgsConstructor
 @Slf4j
-public class UserService implements UserManagementService {
+public class UserProfileServiceImpl implements UserProfileService {
 
     private final UserRepository userRepository;
-    private final UserDeletedEventProducer userDeletedEventProducer;
+    private final UserValidationService userValidationService;   // ← DIP
 
     @Override
     public List<UserResponse> getAllUsers() {
@@ -46,6 +50,7 @@ public class UserService implements UserManagementService {
     @Override
     public UserResponse updateUser(String username, UpdateUserRequest request) {
         log.info("Updating user: {}", username);
+        userValidationService.validateUserUpdate(username, request);  // ← Tach validation
         User user = findUserOrThrow(username);
         applyUpdates(user, request);
         User saved = userRepository.save(user);
@@ -53,21 +58,7 @@ public class UserService implements UserManagementService {
         return UserResponse.fromEntity(saved);
     }
 
-    @Override
-    @Transactional
-    public void deleteUser(String username) {
-        log.info("Deleting user: {}", username);
-
-        User user = userRepository.findByUsername(username)
-                .orElseThrow(() -> new UsernameNotFoundException("User not found: " + username));
-
-        userRepository.deleteByUsername(username);
-
-        // Publish event
-        userDeletedEventProducer.sendUserDeletedEvent(new UserDeletedEvent(username));
-
-        log.info("User deleted successfully: {}", username);
-    }
+    // ===== Private helpers =====
 
     private User findUserOrThrow(String username) {
         return userRepository.findByUsername(username)

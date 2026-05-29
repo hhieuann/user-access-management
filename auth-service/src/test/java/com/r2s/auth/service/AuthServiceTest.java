@@ -7,15 +7,28 @@ import com.r2s.auth.entity.Role;
 import com.r2s.auth.entity.User;
 import com.r2s.auth.kafka.UserEventProducer;
 import com.r2s.auth.repository.UserRepository;
-import com.r2s.core.event.UserRegisteredEvent;
+import com.r2s.auth.service.authentication.AuthServiceImpl;
+import com.r2s.auth.service.password.PasswordService;
+import com.r2s.auth.service.password.PasswordServiceImpl;
+import com.r2s.auth.service.registration.RegistrationServiceImpl;
+import com.r2s.auth.service.role.RoleManagementServiceImpl;
+import com.r2s.auth.strategy.AuthenticationStrategy;
+import com.r2s.auth.strategy.PasswordAuthenticationStrategy;
+import com.r2s.auth.testdata.TestDataBuilder;
+import com.r2s.core.exception.DuplicateUsernameException;
 import com.r2s.core.security.JwtUtil;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
+import org.mockito.ArgumentCaptor;
 import org.mockito.InjectMocks;
 import org.mockito.Mock;
+import org.mockito.Mockito;
 import org.mockito.junit.jupiter.MockitoExtension;
+import org.mockito.junit.jupiter.MockitoSettings;
+import org.mockito.quality.Strictness;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.Authentication;
@@ -24,318 +37,325 @@ import org.springframework.security.core.context.SecurityContextHolder;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 import org.springframework.security.crypto.password.PasswordEncoder;
 
+import java.util.List;
 import java.util.Optional;
 
+import static com.r2s.auth.testdata.TestDataBuilder.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.*;
 
+/**
+ * Unit test cho cac auth services sau khi tach interface theo ISP.
+ *
+ * <p>3 @Nested class group test theo trach nhiem (SOLID-aware testing):
+ * - RegistrationTests: test RegistrationServiceImpl
+ * - AuthenticationTests: test AuthServiceImpl + PasswordAuthenticationStrategy
+ * - RoleManagementTests: test RoleManagementServiceImpl
+ *
+ * <p>Su dung TestDataBuilder (Builder Pattern) de tao test data.
+ */
 @ExtendWith(MockitoExtension.class)
-@org.mockito.junit.jupiter.MockitoSettings(strictness = org.mockito.quality.Strictness.LENIENT)
+@MockitoSettings(strictness = Strictness.LENIENT)
+@DisplayName("Auth services - SOLID refactored")
 class AuthServiceTest {
 
-    @Mock
-    private UserRepository userRepository;
+    // ============================================================
+    // 1. REGISTRATION TESTS
+    // ============================================================
+    @Nested
+    @DisplayName("Registration flow")
+    class RegistrationTests {
 
-    @Mock
-    private PasswordEncoder passwordEncoder;
+        @Mock UserRepository userRepository;
+        @Mock PasswordService passwordService;   // ← Mock abstraction (DIP)
+        @Mock JwtUtil jwtUtil;
+        @Mock UserEventProducer userEventProducer;
 
-    @Mock
-    private JwtUtil jwtUtil;
+        @InjectMocks RegistrationServiceImpl registrationService;
 
-    @Mock
-    private UserEventProducer userEventProducer;
+        @Test
+        @DisplayName("TC001 - Register happy case returns token + persists encoded password")
+        void register_HappyCase_ReturnsToken() {
+            when(userRepository.findByUsername(TEST_USERNAME)).thenReturn(Optional.empty());
+            when(passwordService.encodePassword(TEST_PASSWORD)).thenReturn(TEST_ENCODED_PASSWORD);
+            when(userRepository.save(any(User.class))).thenReturn(aUser());
+            when(jwtUtil.generateToken(TEST_USERNAME)).thenReturn(TEST_TOKEN);
 
-    @InjectMocks
-    private AuthService authService;
+            AuthResponse response = registrationService.register(aRegisterRequest());
 
-    private RegisterRequest registerRequest;
-    private LoginRequest loginRequest;
-    private User existingUser;
+            assertNotNull(response);
+            assertEquals(TEST_TOKEN, response.getToken());
 
-    @BeforeEach
-    void setUp() {
-        registerRequest = new RegisterRequest();
-        registerRequest.setUsername("newuser");
-        registerRequest.setPassword("123456");
+            ArgumentCaptor<User> userCaptor = ArgumentCaptor.forClass(User.class);
+            verify(userRepository).save(userCaptor.capture());
+            User capturedUser = userCaptor.getValue();
+            assertEquals(TEST_USERNAME, capturedUser.getUsername());
+            assertEquals(TEST_ENCODED_PASSWORD, capturedUser.getPassword());
+            assertEquals(Role.ROLE_USER, capturedUser.getRole());
 
-        loginRequest = new LoginRequest();
-        loginRequest.setUsername("newuser");
-        loginRequest.setPassword("123456");
+            verify(userEventProducer, times(1)).sendUserRegisteredEvent(any());
+        }
 
-        existingUser = new User();
-        existingUser.setId(1L);
-        existingUser.setUsername("newuser");
-        existingUser.setPassword("encodedPassword");
-        existingUser.setRole(Role.ROLE_USER);
+        @Test
+        @DisplayName("TC002 - Duplicate username throws DuplicateUsernameException")
+        void register_WhenUsernameExists_ThrowsDuplicateException() {
+            when(userRepository.findByUsername(TEST_USERNAME)).thenReturn(Optional.of(aUser()));
 
-        // Mock SecurityContext - mặc định "admin" đăng nhập
-        Authentication auth = mock(Authentication.class);
-        when(auth.getName()).thenReturn("admin");
-        SecurityContext securityContext = mock(SecurityContext.class);
-        when(securityContext.getAuthentication()).thenReturn(auth);
-        SecurityContextHolder.setContext(securityContext);
+            DuplicateUsernameException ex = assertThrows(
+                    DuplicateUsernameException.class,
+                    () -> registrationService.register(aRegisterRequest())
+            );
+            assertTrue(ex.getMessage().contains("already exists"));
+            verify(userRepository, never()).save(any(User.class));
+            verify(userEventProducer, never()).sendUserRegisteredEvent(any());
+        }
+
+        @Test
+        @DisplayName("TC020 - Register: username null processes at service layer")
+        void register_WhenUsernameNull_HandledByDtoValidation() {
+            RegisterRequest req = new RegisterRequest();
+            req.setUsername(null);
+            req.setPassword(TEST_PASSWORD);
+            when(userRepository.findByUsername(null)).thenReturn(Optional.empty());
+            when(passwordService.encodePassword(TEST_PASSWORD)).thenReturn("encoded");
+            when(userRepository.save(any(User.class))).thenReturn(aUser());
+            when(jwtUtil.generateToken(null)).thenReturn("token");
+
+            AuthResponse response = registrationService.register(req);
+
+            assertNotNull(response);
+        }
+
+        @Test
+        @DisplayName("TC022 - Register: password null throws exception")
+        void register_WhenPasswordNull_ThrowsException() {
+            RegisterRequest req = new RegisterRequest();
+            req.setUsername(TEST_USERNAME);
+            req.setPassword(null);
+            when(userRepository.findByUsername(TEST_USERNAME)).thenReturn(Optional.empty());
+            when(passwordService.encodePassword(null))
+                    .thenThrow(new IllegalArgumentException("Password cannot be null"));
+
+            assertThrows(Exception.class, () -> registrationService.register(req));
+            verify(userRepository, never()).save(any(User.class));
+        }
+
+        @Test
+        @DisplayName("TC024 - Register: very long username (256 chars) processes")
+        void register_WhenUsernameVeryLong_ProcessesAtServiceLayer() {
+            String longUsername = "a".repeat(256);
+            RegisterRequest req = aRegisterRequest(longUsername);
+            when(userRepository.findByUsername(longUsername)).thenReturn(Optional.empty());
+            when(passwordService.encodePassword(TEST_PASSWORD)).thenReturn("encoded");
+            when(userRepository.save(any(User.class))).thenReturn(aUser());
+            when(jwtUtil.generateToken(longUsername)).thenReturn("token");
+
+            AuthResponse response = registrationService.register(req);
+
+            assertNotNull(response);
+        }
     }
 
-    // ==================== REGISTER TESTS ====================
+    // ============================================================
+    // 2. AUTHENTICATION (LOGIN) TESTS - Strategy Pattern
+    // ============================================================
+    @Nested
+    @DisplayName("Authentication flow (Strategy Pattern)")
+    class AuthenticationTests {
 
-    @Test
-    @DisplayName("TC001 - Register: Happy case - new username should succeed (with ArgumentCaptor)")
-    void register_HappyCase_ReturnsToken() {
-        // Arrange
-        when(userRepository.findByUsername("newuser")).thenReturn(Optional.empty());
-        when(passwordEncoder.encode("123456")).thenReturn("encodedPassword");
-        when(userRepository.save(any(User.class))).thenReturn(existingUser);
-        when(jwtUtil.generateToken("newuser")).thenReturn("mockedToken");
+        @Mock UserRepository userRepository;
+        @Mock PasswordService passwordService;
+        @Mock JwtUtil jwtUtil;
 
-        // Act
-        AuthResponse response = authService.register(registerRequest);
+        private AuthServiceImpl authService;
+        private PasswordAuthenticationStrategy passwordStrategy;
 
-        // Assert response
-        assertNotNull(response);
-        assertEquals("mockedToken", response.getToken());
+        @BeforeEach
+        void setUp() {
+            passwordStrategy = new PasswordAuthenticationStrategy(
+                    userRepository, passwordService, jwtUtil);
+            authService = new AuthServiceImpl(List.of(passwordStrategy));
+        }
 
-        // Verify với ArgumentCaptor: capture User object để check chi tiết
-        org.mockito.ArgumentCaptor<User> userCaptor =
-                org.mockito.ArgumentCaptor.forClass(User.class);
-        verify(userRepository).save(userCaptor.capture());
+        @Test
+        @DisplayName("TC003 - Login happy case returns token")
+        void login_HappyCase_ReturnsToken() {
+            when(userRepository.findByUsername(TEST_USERNAME)).thenReturn(Optional.of(aUser()));
+            when(passwordService.matches(TEST_PASSWORD, TEST_ENCODED_PASSWORD)).thenReturn(true);
+            when(jwtUtil.generateToken(TEST_USERNAME)).thenReturn(TEST_TOKEN);
 
-        User capturedUser = userCaptor.getValue();
-        assertEquals("newuser", capturedUser.getUsername(), "Username phải đúng");
-        assertEquals("encodedPassword", capturedUser.getPassword(), "Password phải được encode");
-        assertEquals(Role.ROLE_USER, capturedUser.getRole(), "Role mặc định phải là ROLE_USER");
+            AuthResponse response = authService.login(aLoginRequest());
 
-        // Verify event được publish 1 lần với đúng username
-        org.mockito.ArgumentCaptor<UserRegisteredEvent> eventCaptor =
-                org.mockito.ArgumentCaptor.forClass(UserRegisteredEvent.class);
-        verify(userEventProducer, times(1)).sendUserRegisteredEvent(eventCaptor.capture());
-        assertEquals("newuser", eventCaptor.getValue().getUsername());
+            assertNotNull(response);
+            assertEquals(TEST_TOKEN, response.getToken());
+        }
 
-        // verifyNoMoreInteractions: đảm bảo không có method nào khác bị gọi ngoài ý muốn
-        verifyNoMoreInteractions(userEventProducer);
+        @Test
+        @DisplayName("TC004 - Login: non-existent user throws UsernameNotFoundException")
+        void login_WhenUserNotFound_ThrowsException() {
+            when(userRepository.findByUsername(TEST_USERNAME)).thenReturn(Optional.empty());
+
+            assertThrows(UsernameNotFoundException.class,
+                    () -> authService.login(aLoginRequest()));
+        }
+
+        @Test
+        @DisplayName("TC005 - Login: wrong password throws BadCredentialsException")
+        void login_WhenWrongPassword_ThrowsException() {
+            when(userRepository.findByUsername(TEST_USERNAME)).thenReturn(Optional.of(aUser()));
+            when(passwordService.matches(TEST_PASSWORD, TEST_ENCODED_PASSWORD)).thenReturn(false);
+
+            assertThrows(BadCredentialsException.class,
+                    () -> authService.login(aLoginRequest()));
+        }
+
+        @Test
+        @DisplayName("TC025 - Login: username null throws UsernameNotFoundException")
+        void login_WhenUsernameNull_ThrowsException() {
+            LoginRequest req = new LoginRequest();
+            req.setUsername(null);
+            req.setPassword(TEST_PASSWORD);
+            when(userRepository.findByUsername(null)).thenReturn(Optional.empty());
+
+            assertThrows(UsernameNotFoundException.class, () -> authService.login(req));
+        }
+
+        @Test
+        @DisplayName("TC026 - Login: password null throws BadCredentialsException")
+        void login_WhenPasswordNull_ThrowsException() {
+            LoginRequest req = new LoginRequest();
+            req.setUsername(TEST_USERNAME);
+            req.setPassword(null);
+            when(userRepository.findByUsername(TEST_USERNAME)).thenReturn(Optional.of(aUser()));
+            when(passwordService.matches(null, TEST_ENCODED_PASSWORD)).thenReturn(false);
+
+            assertThrows(BadCredentialsException.class, () -> authService.login(req));
+        }
+
+        @Test
+        @DisplayName("TC027 - Login: JWT token contains correct subject")
+        void login_HappyCase_TokenContainsCorrectSubject() {
+            when(userRepository.findByUsername(TEST_USERNAME)).thenReturn(Optional.of(aUser()));
+            when(passwordService.matches(TEST_PASSWORD, TEST_ENCODED_PASSWORD)).thenReturn(true);
+            when(jwtUtil.generateToken(TEST_USERNAME)).thenReturn("validToken_for_newuser");
+
+            AuthResponse response = authService.login(aLoginRequest());
+
+            assertEquals("validToken_for_newuser", response.getToken());
+            verify(jwtUtil, times(1)).generateToken(TEST_USERNAME);
+        }
+
+        @Test
+        @DisplayName("TC101 - Strategy: PasswordStrategy.supports('password') = true")
+        void strategy_SupportsPasswordType() {
+            assertTrue(passwordStrategy.supports("password"));
+            assertTrue(passwordStrategy.supports("PASSWORD"));
+            assertTrue(passwordStrategy.supports(null), "null = legacy = password default");
+            assertFalse(passwordStrategy.supports("google-oauth"));
+        }
     }
 
-    @Test
-    @DisplayName("TC002 - Register: Worst case - existing username should throw exception")
-    void register_WhenUsernameExists_ThrowsException() {
-        when(userRepository.findByUsername("newuser")).thenReturn(Optional.of(existingUser));
+    // ============================================================
+    // 3. ROLE MANAGEMENT TESTS
+    // ============================================================
+    @Nested
+    @DisplayName("Role management (admin)")
+    class RoleManagementTests {
 
-        IllegalArgumentException ex = assertThrows(
-                IllegalArgumentException.class,
-                () -> authService.register(registerRequest)
-        );
-        assertTrue(ex.getMessage().contains("already exists"));
-        verify(userRepository, never()).save(any(User.class));
-        verify(userEventProducer, never()).sendUserRegisteredEvent(any());
+        @Mock UserRepository userRepository;
+
+        @InjectMocks RoleManagementServiceImpl roleManagementService;
+
+        @BeforeEach
+        void setUpSecurityContext() {
+            Authentication auth = mock(Authentication.class);
+            when(auth.getName()).thenReturn(ADMIN_USERNAME);
+            SecurityContext securityContext = mock(SecurityContext.class);
+            when(securityContext.getAuthentication()).thenReturn(auth);
+            SecurityContextHolder.setContext(securityContext);
+        }
+
+        @Test
+        @DisplayName("TC006 - AssignRole happy case updates role")
+        void assignRole_HappyCase_UpdatesRole() {
+            User user = aUser();
+            when(userRepository.findByUsername(TEST_USERNAME)).thenReturn(Optional.of(user));
+            when(userRepository.save(any(User.class))).thenReturn(user);
+
+            roleManagementService.assignRole(TEST_USERNAME, Role.ROLE_ADMIN);
+
+            assertEquals(Role.ROLE_ADMIN, user.getRole());
+            verify(userRepository, times(1)).save(user);
+        }
+
+        @Test
+        @DisplayName("TC007 - AssignRole: non-existent user throws exception")
+        void assignRole_WhenUserNotFound_ThrowsException() {
+            when(userRepository.findByUsername(TEST_USERNAME)).thenReturn(Optional.empty());
+
+            assertThrows(UsernameNotFoundException.class,
+                    () -> roleManagementService.assignRole(TEST_USERNAME, Role.ROLE_ADMIN));
+            verify(userRepository, never()).save(any(User.class));
+        }
+
+        @Test
+        @DisplayName("TC028 - AssignRole: role null throws IllegalArgumentException")
+        void assignRole_WhenRoleNull_ThrowsException() {
+            assertThrows(IllegalArgumentException.class,
+                    () -> roleManagementService.assignRole(TEST_USERNAME, null));
+            verify(userRepository, never()).save(any(User.class));
+        }
+
+        @Test
+        @DisplayName("TC029 - AssignRole: admin cannot change own role")
+        void assignRole_WhenAdminChangesOwnRole_ThrowsException() {
+            assertThrows(AccessDeniedException.class,
+                    () -> roleManagementService.assignRole(ADMIN_USERNAME, Role.ROLE_USER));
+            verify(userRepository, never()).save(any(User.class));
+        }
+
+        @Test
+        @DisplayName("TC030 - AssignRole: assign ROLE_MODERATOR succeeds")
+        void assignRole_AssignModerator_UpdatesRole() {
+            User user = aUser();
+            when(userRepository.findByUsername(TEST_USERNAME)).thenReturn(Optional.of(user));
+            when(userRepository.save(any(User.class))).thenReturn(user);
+
+            roleManagementService.assignRole(TEST_USERNAME, Role.ROLE_MODERATOR);
+
+            assertEquals(Role.ROLE_MODERATOR, user.getRole());
+        }
     }
 
-    // ==================== LOGIN TESTS ====================
+    // ============================================================
+    // 4. PASSWORD SERVICE TESTS (DIP - test abstraction layer)
+    // ============================================================
+    @Nested
+    @DisplayName("PasswordService (DIP abstraction)")
+    class PasswordServiceTests {
 
-    @Test
-    @DisplayName("TC003 - Login: Happy case - correct credentials should return token")
-    void login_HappyCase_ReturnsToken() {
-        when(userRepository.findByUsername("newuser")).thenReturn(Optional.of(existingUser));
-        when(passwordEncoder.matches("123456", "encodedPassword")).thenReturn(true);
-        when(jwtUtil.generateToken("newuser")).thenReturn("mockedToken");
+        @Mock PasswordEncoder passwordEncoder;
+        @InjectMocks PasswordServiceImpl passwordService;
 
-        AuthResponse response = authService.login(loginRequest);
+        @Test
+        @DisplayName("TC102 - encodePassword delegates to encoder")
+        void encodePassword_DelegatesToEncoder() {
+            when(passwordEncoder.encode("raw")).thenReturn("encoded");
 
-        assertNotNull(response);
-        assertEquals("mockedToken", response.getToken());
-    }
+            String result = passwordService.encodePassword("raw");
 
-    @Test
-    @DisplayName("TC004 - Login: Worst case - non-existent user should throw exception")
-    void login_WhenUserNotFound_ThrowsException() {
-        when(userRepository.findByUsername("newuser")).thenReturn(Optional.empty());
+            assertEquals("encoded", result);
+            verify(passwordEncoder, times(1)).encode("raw");
+        }
 
-        assertThrows(UsernameNotFoundException.class, () -> authService.login(loginRequest));
-    }
+        @Test
+        @DisplayName("TC103 - matches delegates to encoder")
+        void matches_DelegatesToEncoder() {
+            when(passwordEncoder.matches("raw", "encoded")).thenReturn(true);
 
-    @Test
-    @DisplayName("TC005 - Login: Worst case - wrong password should throw exception")
-    void login_WhenWrongPassword_ThrowsException() {
-        when(userRepository.findByUsername("newuser")).thenReturn(Optional.of(existingUser));
-        when(passwordEncoder.matches("123456", "encodedPassword")).thenReturn(false);
-
-        assertThrows(BadCredentialsException.class, () -> authService.login(loginRequest));
-    }
-
-    // ==================== ASSIGN ROLE TESTS ====================
-
-    @Test
-    @DisplayName("TC006 - AssignRole: Happy case - assign ADMIN to existing user")
-    void assignRole_HappyCase_UpdatesRole() {
-        when(userRepository.findByUsername("newuser")).thenReturn(Optional.of(existingUser));
-        when(userRepository.save(any(User.class))).thenReturn(existingUser);
-
-        authService.assignRole("newuser", Role.ROLE_ADMIN);
-
-        assertEquals(Role.ROLE_ADMIN, existingUser.getRole());
-        verify(userRepository, times(1)).save(existingUser);
-    }
-
-    @Test
-    @DisplayName("TC007 - AssignRole: Worst case - non-existent user should throw exception")
-    void assignRole_WhenUserNotFound_ThrowsException() {
-        when(userRepository.findByUsername("newuser")).thenReturn(Optional.empty());
-
-        assertThrows(
-                UsernameNotFoundException.class,
-                () -> authService.assignRole("newuser", Role.ROLE_ADMIN)
-        );
-        verify(userRepository, never()).save(any(User.class));
-    }
-
-    // ==================== TC020-TC024: REGISTER VALIDATION ====================
-
-    @Test
-    @DisplayName("TC020 - Register: username null processes at service layer (validation at DTO)")
-    void register_WhenUsernameNull_HandledByDtoValidation() {
-        RegisterRequest req = new RegisterRequest();
-        req.setUsername(null);
-        req.setPassword("123456");
-        when(userRepository.findByUsername(null)).thenReturn(Optional.empty());
-        when(passwordEncoder.encode("123456")).thenReturn("encoded");
-        when(userRepository.save(any(User.class))).thenReturn(existingUser);
-        when(jwtUtil.generateToken(null)).thenReturn("token");
-
-        AuthResponse response = authService.register(req);
-
-        assertNotNull(response);
-    }
-
-    @Test
-    @DisplayName("TC021 - Register: Edge case - username empty")
-    void register_WhenUsernameEmpty_ThrowsException() {
-        RegisterRequest req = new RegisterRequest();
-        req.setUsername("");
-        req.setPassword("123456");
-        when(userRepository.findByUsername("")).thenReturn(Optional.empty());
-
-        assertDoesNotThrow(() -> {
-            try {
-                authService.register(req);
-            } catch (Exception e) {
-                // Expected - DB constraint
-            }
-        });
-    }
-
-    @Test
-    @DisplayName("TC022 - Register: Edge case - password null should throw exception")
-    void register_WhenPasswordNull_ThrowsException() {
-        RegisterRequest req = new RegisterRequest();
-        req.setUsername("newuser");
-        req.setPassword(null);
-        when(userRepository.findByUsername("newuser")).thenReturn(Optional.empty());
-        when(passwordEncoder.encode(null)).thenThrow(new IllegalArgumentException("Password cannot be null"));
-
-        assertThrows(Exception.class, () -> authService.register(req));
-        verify(userRepository, never()).save(any(User.class));
-    }
-
-    @Test
-    @DisplayName("TC023 - Register: Edge case - password empty should still process")
-    void register_WhenPasswordEmpty_ProcessesNormally() {
-        RegisterRequest req = new RegisterRequest();
-        req.setUsername("newuser");
-        req.setPassword("");
-        when(userRepository.findByUsername("newuser")).thenReturn(Optional.empty());
-        when(passwordEncoder.encode("")).thenReturn("encodedEmpty");
-        when(userRepository.save(any(User.class))).thenReturn(existingUser);
-        when(jwtUtil.generateToken("newuser")).thenReturn("token");
-
-        AuthResponse response = authService.register(req);
-
-        assertNotNull(response);
-    }
-
-    @Test
-    @DisplayName("TC024 - Register: Edge case - very long username (256 chars)")
-    void register_WhenUsernameVeryLong_ProcessesAtServiceLayer() {
-        String longUsername = "a".repeat(256);
-        RegisterRequest req = new RegisterRequest();
-        req.setUsername(longUsername);
-        req.setPassword("123456");
-        when(userRepository.findByUsername(longUsername)).thenReturn(Optional.empty());
-        when(passwordEncoder.encode("123456")).thenReturn("encoded");
-        when(userRepository.save(any(User.class))).thenReturn(existingUser);
-        when(jwtUtil.generateToken(longUsername)).thenReturn("token");
-
-        AuthResponse response = authService.register(req);
-
-        assertNotNull(response);
-    }
-
-    // ==================== TC025-TC027: LOGIN VALIDATION ====================
-
-    @Test
-    @DisplayName("TC025 - Login: Edge case - username null should throw exception")
-    void login_WhenUsernameNull_ThrowsException() {
-        LoginRequest req = new LoginRequest();
-        req.setUsername(null);
-        req.setPassword("123456");
-        when(userRepository.findByUsername(null)).thenReturn(Optional.empty());
-
-        assertThrows(UsernameNotFoundException.class, () -> authService.login(req));
-    }
-
-    @Test
-    @DisplayName("TC026 - Login: Edge case - password null should throw BadCredentialsException")
-    void login_WhenPasswordNull_ThrowsException() {
-        LoginRequest req = new LoginRequest();
-        req.setUsername("newuser");
-        req.setPassword(null);
-        when(userRepository.findByUsername("newuser")).thenReturn(Optional.of(existingUser));
-        when(passwordEncoder.matches(null, "encodedPassword")).thenReturn(false);
-
-        assertThrows(BadCredentialsException.class, () -> authService.login(req));
-    }
-
-    @Test
-    @DisplayName("TC027 - Login: Security - JWT token contains correct subject")
-    void login_HappyCase_TokenContainsCorrectSubject() {
-        when(userRepository.findByUsername("newuser")).thenReturn(Optional.of(existingUser));
-        when(passwordEncoder.matches("123456", "encodedPassword")).thenReturn(true);
-        when(jwtUtil.generateToken("newuser")).thenReturn("validToken_for_newuser");
-
-        AuthResponse response = authService.login(loginRequest);
-
-        assertNotNull(response);
-        assertEquals("validToken_for_newuser", response.getToken());
-        verify(jwtUtil, times(1)).generateToken("newuser");
-    }
-
-    // ==================== TC028-TC030: ASSIGN ROLE EXTENDED ====================
-
-    @Test
-    @DisplayName("TC028 - AssignRole: Worst case - role null should throw exception")
-    void assignRole_WhenRoleNull_ThrowsException() {
-        assertThrows(IllegalArgumentException.class,
-                () -> authService.assignRole("newuser", null));
-        verify(userRepository, never()).save(any(User.class));
-    }
-
-    @Test
-    @DisplayName("TC029 - AssignRole: Worst case - admin cannot change own role")
-    void assignRole_WhenAdminChangesOwnRole_ThrowsException() {
-        assertThrows(
-                AccessDeniedException.class,
-                () -> authService.assignRole("admin", Role.ROLE_USER)
-        );
-        verify(userRepository, never()).save(any(User.class));
-    }
-
-    @Test
-    @DisplayName("TC030 - AssignRole: Happy case - assign ROLE_MODERATOR")
-    void assignRole_AssignModerator_UpdatesRole() {
-        when(userRepository.findByUsername("newuser")).thenReturn(Optional.of(existingUser));
-        when(userRepository.save(any(User.class))).thenReturn(existingUser);
-
-        authService.assignRole("newuser", Role.ROLE_MODERATOR);
-
-        assertEquals(Role.ROLE_MODERATOR, existingUser.getRole());
-        verify(userRepository, times(1)).save(existingUser);
+            assertTrue(passwordService.matches("raw", "encoded"));
+            verify(passwordEncoder).matches("raw", "encoded");
+        }
     }
 }

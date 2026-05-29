@@ -6,7 +6,8 @@ import com.r2s.user.dto.UserResponse;
 import com.r2s.user.entity.Role;
 import com.r2s.user.entity.User;
 import com.r2s.user.repository.UserRepository;
-import com.r2s.user.service.UserService;
+import com.r2s.user.service.management.UserManagementService;
+import com.r2s.user.service.profile.UserProfileService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -20,27 +21,28 @@ import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+/**
+ * Integration Test sau khi refactor SOLID:
+ * - Inject 2 interface RIENG (UserProfileService + UserManagementService) - ISP
+ * - Test full flow voi DB that
+ */
 @SpringBootTest
 @ActiveProfiles("test")
-@DisplayName("Integration Test: UserService + Repository + DB")
+@DisplayName("Integration: UserProfileService + UserManagementService + DB")
 class UserServiceIntegrationTest {
 
-    @Autowired
-    private UserService userService;
-
-    @Autowired
-    private UserRepository userRepository;
+    @Autowired private UserProfileService userProfileService;
+    @Autowired private UserManagementService userManagementService;
+    @Autowired private UserRepository userRepository;
 
     @MockBean
     private KafkaTemplate<String, UserDeletedEvent> kafkaTemplate;
-
-    private User testUser;
 
     @BeforeEach
     void setUp() {
         userRepository.deleteAll();
 
-        testUser = new User();
+        User testUser = new User();
         testUser.setUsername("test_user_it");
         testUser.setPassword("encodedPassword");
         testUser.setFullName("Original Name");
@@ -50,13 +52,13 @@ class UserServiceIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT003 - UpdateUser: Cập nhật profile vào DB và query lại verify")
+    @DisplayName("IT003 - updateUser: cập nhật profile vào DB và query lại verify")
     void updateUser_UpdatesDbAndPersists() {
         UpdateUserRequest request = new UpdateUserRequest();
         request.setFullName("Updated Name");
         request.setEmail("updated@test.com");
 
-        UserResponse response = userService.updateUser("test_user_it", request);
+        UserResponse response = userProfileService.updateUser("test_user_it", request);
 
         assertNotNull(response);
         assertEquals("Updated Name", response.getFullName());
@@ -68,11 +70,11 @@ class UserServiceIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT004 - DeleteUser: User bị xoá khỏi DB")
+    @DisplayName("IT004 - deleteUser: user bị xoá khỏi DB")
     void deleteUser_RemovesFromDb() {
         assertTrue(userRepository.findByUsername("test_user_it").isPresent());
 
-        userService.deleteUser("test_user_it");
+        userManagementService.deleteUser("test_user_it");
 
         Optional<User> deletedUser = userRepository.findByUsername("test_user_it");
         assertFalse(deletedUser.isPresent());

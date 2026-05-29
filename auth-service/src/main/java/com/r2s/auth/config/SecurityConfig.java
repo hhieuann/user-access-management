@@ -1,5 +1,7 @@
 package com.r2s.auth.config;
 
+import com.r2s.auth.security.ApiResponseAccessDeniedHandler;
+import com.r2s.auth.security.ApiResponseAuthenticationEntryPoint;
 import com.r2s.auth.security.JwtFilter;
 import com.r2s.auth.security.RateLimitFilter;
 import com.r2s.core.config.SecurityConstants;
@@ -23,6 +25,8 @@ public class SecurityConfig {
 
     private final JwtFilter jwtFilter;
     private final RateLimitFilter rateLimitFilter;
+    private final ApiResponseAuthenticationEntryPoint authenticationEntryPoint;
+    private final ApiResponseAccessDeniedHandler accessDeniedHandler;
 
     @Bean
     public SecurityFilterChain filterChain(HttpSecurity http) throws Exception {
@@ -34,6 +38,10 @@ public class SecurityConfig {
                         .requestMatchers(SecurityConstants.PUBLIC_URLS).permitAll()
                         .requestMatchers("/moderator/**").hasAnyRole("MODERATOR", "ADMIN")
                         .anyRequest().authenticated())
+                // Custom handlers tra ApiResponse format cho 401/403 (consistency)
+                .exceptionHandling(ex -> ex
+                        .authenticationEntryPoint(authenticationEntryPoint)
+                        .accessDeniedHandler(accessDeniedHandler))
                 .addFilterBefore(rateLimitFilter,
                         UsernamePasswordAuthenticationFilter.class)
                 .addFilterBefore(jwtFilter,
