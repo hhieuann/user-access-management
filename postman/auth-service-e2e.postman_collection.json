@@ -1,0 +1,308 @@
+{
+  "info": {
+    "_postman_id": "e7c1a3d2-uam-auth-e2e-2026",
+    "name": "UAM - Auth Service E2E",
+    "description": "End-to-End test cho auth-service: register, login, role management.\n\n**Số test:** 8 requests\n\n**Cách chạy:**\n1. Import collection + environment `uam-e2e.postman_environment.json`\n2. Đảm bảo auth-service đang chạy ở localhost:8081\n3. Mở Postman Runner → chọn collection này → Run\n4. Tất cả test sẽ chạy tuần tự, kết quả PASS/FAIL hiển thị ngay\n\n**Trace flow:**\n- Tạo username random qua pre-request script (mỗi lần chạy là user mới)\n- Test 1 register → tự lưu token vào {{token}}\n- Test 4 login → cập nhật {{token}} mới\n- Test 7 dùng token user (không phải admin) → expect 403",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Register - Happy Path (201 Created)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "// Random username để mỗi lần chạy là user mới",
+              "const randomSuffix = Math.floor(Math.random() * 1000000);",
+              "const username = 'e2e_user_' + randomSuffix;",
+              "pm.environment.set('username', username);",
+              "console.log('Will register username:', username);"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 201 Created', () => pm.response.to.have.status(201));",
+              "",
+              "const json = pm.response.json();",
+              "pm.test('ApiResponse wrapper: success=true', () => pm.expect(json.success).to.be.true);",
+              "pm.test('ApiResponse contains token in data', () => {",
+              "    pm.expect(json.data).to.be.an('object');",
+              "    pm.expect(json.data.token).to.be.a('string').and.not.empty;",
+              "});",
+              "pm.test('Has message + timestamp', () => {",
+              "    pm.expect(json.message).to.equal('User registered successfully');",
+              "    pm.expect(json.timestamp).to.be.a('string');",
+              "});",
+              "",
+              "// Save token cho test sau",
+              "pm.environment.set('token', json.data.token);",
+              "console.log('Token saved:', json.data.token.substring(0, 30) + '...');"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}"
+        },
+        "url": {
+          "raw": "{{authBaseUrl}}/auth/register",
+          "host": ["{{authBaseUrl}}"],
+          "path": ["auth", "register"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "2. Register - Duplicate Username (409 Conflict)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 409 Conflict', () => pm.response.to.have.status(409));",
+              "",
+              "const json = pm.response.json();",
+              "pm.test('ApiResponse wrapper: success=false', () => pm.expect(json.success).to.be.false);",
+              "pm.test('Message contains \"already exists\"', () => {",
+              "    pm.expect(json.message.toLowerCase()).to.include('already exists');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}"
+        },
+        "url": {
+          "raw": "{{authBaseUrl}}/auth/register",
+          "host": ["{{authBaseUrl}}"],
+          "path": ["auth", "register"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "3. Register - Missing Password (400 Validation)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 400 Bad Request', () => pm.response.to.have.status(400));",
+              "",
+              "const json = pm.response.json();",
+              "pm.test('ApiResponse: success=false', () => pm.expect(json.success).to.be.false);",
+              "pm.test('Message mentions password validation', () => {",
+              "    pm.expect(json.message.toLowerCase()).to.include('password');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"missingpwd_{{$randomInt}}\"\n}"
+        },
+        "url": {
+          "raw": "{{authBaseUrl}}/auth/register",
+          "host": ["{{authBaseUrl}}"],
+          "path": ["auth", "register"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "4. Login - Happy Path (200 OK)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 200', () => pm.response.to.have.status(200));",
+              "",
+              "const json = pm.response.json();",
+              "pm.test('ApiResponse wrapper success=true', () => pm.expect(json.success).to.be.true);",
+              "pm.test('Returns new JWT token', () => {",
+              "    pm.expect(json.data.token).to.be.a('string').and.not.empty;",
+              "});",
+              "pm.test('Message = Login successful', () => {",
+              "    pm.expect(json.message).to.equal('Login successful');",
+              "});",
+              "",
+              "// Update token (login token có thể khác register token về exp)",
+              "pm.environment.set('token', json.data.token);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}"
+        },
+        "url": {
+          "raw": "{{authBaseUrl}}/auth/login",
+          "host": ["{{authBaseUrl}}"],
+          "path": ["auth", "login"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "5. Login - Wrong Password (401 Unauthorized)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 401', () => pm.response.to.have.status(401));",
+              "",
+              "const json = pm.response.json();",
+              "pm.test('ApiResponse: success=false', () => pm.expect(json.success).to.be.false);",
+              "pm.test('Message: Invalid username or password', () => {",
+              "    pm.expect(json.message.toLowerCase()).to.include('invalid');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"wrongpassword999\"\n}"
+        },
+        "url": {
+          "raw": "{{authBaseUrl}}/auth/login",
+          "host": ["{{authBaseUrl}}"],
+          "path": ["auth", "login"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "6. Login - Non-existent User (401 Unauthorized)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 401', () => pm.response.to.have.status(401));",
+              "",
+              "const json = pm.response.json();",
+              "pm.test('ApiResponse: success=false', () => pm.expect(json.success).to.be.false);",
+              "pm.test('No information leak (generic message)', () => {",
+              "    // Tránh leak \"user not found\" vs \"wrong password\" - đều trả message giống nhau",
+              "    pm.expect(json.message.toLowerCase()).to.include('invalid');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"definitely_does_not_exist_user_99999\",\n  \"password\": \"anypassword\"\n}"
+        },
+        "url": {
+          "raw": "{{authBaseUrl}}/auth/login",
+          "host": ["{{authBaseUrl}}"],
+          "path": ["auth", "login"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "7. Assign Role - Non-Admin Forbidden (403)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status code is 403 Forbidden', () => pm.response.to.have.status(403));",
+              "",
+              "const json = pm.response.json();",
+              "pm.test('ApiResponse: success=false', () => pm.expect(json.success).to.be.false);",
+              "pm.test('Message: Access denied', () => {",
+              "    pm.expect(json.message.toLowerCase()).to.include('access denied');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+        "url": {
+          "raw": "{{authBaseUrl}}/auth/admin/assign-role?username={{username}}&role=ROLE_ADMIN",
+          "host": ["{{authBaseUrl}}"],
+          "path": ["auth", "admin", "assign-role"],
+          "query": [
+            {"key": "username", "value": "{{username}}"},
+            {"key": "role", "value": "ROLE_ADMIN"}
+          ]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "8. Assign Role - No Token (401 Unauthorized)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "// Endpoint admin yêu cầu auth → không có token = 401 hoặc 403 (tùy security config)",
+              "pm.test('Status code is 401 or 403', () => {",
+              "    pm.expect([401, 403]).to.include(pm.response.code);",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [],
+        "url": {
+          "raw": "{{authBaseUrl}}/auth/admin/assign-role?username={{username}}&role=ROLE_ADMIN",
+          "host": ["{{authBaseUrl}}"],
+          "path": ["auth", "admin", "assign-role"],
+          "query": [
+            {"key": "username", "value": "{{username}}"},
+            {"key": "role", "value": "ROLE_ADMIN"}
+          ]
+        }
+      },
+      "response": []
+    }
+  ]
+}
