@@ -1,5 +1,7 @@
 package com.r2s.auth.exception;
 
+import com.r2s.core.exception.DuplicateUsernameException;
+import com.r2s.core.response.ApiResponse;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -9,11 +11,12 @@ import org.springframework.security.access.AccessDeniedException;
 import org.springframework.security.authentication.BadCredentialsException;
 import org.springframework.security.core.userdetails.UsernameNotFoundException;
 
-import java.util.Map;
-
 import static org.junit.jupiter.api.Assertions.*;
 
-@DisplayName("AuthExceptionHandler Unit Tests")
+/**
+ * Unit test cho AuthExceptionHandler sau khi refactor sang ApiResponse format.
+ */
+@DisplayName("AuthExceptionHandler - ApiResponse format")
 class AuthExceptionHandlerTest {
 
     private AuthExceptionHandler handler;
@@ -24,91 +27,74 @@ class AuthExceptionHandlerTest {
     }
 
     @Test
-    @DisplayName("TC059 - handleIllegalArgument: Trả về 400 Bad Request với message gốc")
+    @DisplayName("TC059 - handleIllegalArgument: Trả 400 với ApiResponse format")
     void handleIllegalArgument_ReturnsBadRequest() {
-        // Arrange
-        IllegalArgumentException ex = new IllegalArgumentException("Username already exists");
+        IllegalArgumentException ex = new IllegalArgumentException("Bad request");
 
-        // Act
-        ResponseEntity<Map<String, Object>> response = handler.handleIllegalArgument(ex);
+        ResponseEntity<ApiResponse<Void>> response = handler.handleIllegalArgument(ex);
 
-        // Assert
         assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
-        Map<String, Object> body = response.getBody();
+        ApiResponse<Void> body = response.getBody();
         assertNotNull(body);
-        assertEquals(400, body.get("status"));
-        assertEquals("Username already exists", body.get("message"));
-        assertNotNull(body.get("timestamp"));
+        assertFalse(body.isSuccess());
+        assertEquals("Bad request", body.getMessage());
+        assertNotNull(body.getTimestamp());
     }
 
     @Test
-    @DisplayName("TC060 - handleBadCredentials (BadCredentialsException): Trả về 401")
+    @DisplayName("TC060 - handleBadCredentials (BadCredentialsException): Trả 401")
     void handleBadCredentials_WhenBadCredentialsException_ReturnsUnauthorized() {
-        // Arrange
         BadCredentialsException ex = new BadCredentialsException("Wrong password");
 
-        // Act
-        ResponseEntity<Map<String, Object>> response = handler.handleBadCredentials(ex);
+        ResponseEntity<ApiResponse<Void>> response = handler.handleBadCredentials(ex);
 
-        // Assert
         assertEquals(HttpStatus.UNAUTHORIZED, response.getStatusCode());
-        Map<String, Object> body = response.getBody();
+        ApiResponse<Void> body = response.getBody();
         assertNotNull(body);
-        assertEquals(401, body.get("status"));
-        assertEquals("Invalid username or password", body.get("message"));
-        assertNotNull(body.get("timestamp"));
+        assertFalse(body.isSuccess());
+        assertEquals("Invalid username or password", body.getMessage());
     }
 
     @Test
-    @DisplayName("TC061 - handleBadCredentials (UsernameNotFoundException): Trả về 401")
+    @DisplayName("TC061 - handleBadCredentials (UsernameNotFoundException): Trả 401 (no info leak)")
     void handleBadCredentials_WhenUsernameNotFoundException_ReturnsUnauthorized() {
-        // Arrange
         UsernameNotFoundException ex = new UsernameNotFoundException("User not found");
 
-        // Act
-        ResponseEntity<Map<String, Object>> response = handler.handleBadCredentials(ex);
+        ResponseEntity<ApiResponse<Void>> response = handler.handleBadCredentials(ex);
 
-        // Assert
         assertEquals(HttpStatus.UNAUTHORIZED, response.getStatusCode());
-        Map<String, Object> body = response.getBody();
+        ApiResponse<Void> body = response.getBody();
         assertNotNull(body);
-        assertEquals(401, body.get("status"));
-        // Note: message luôn là "Invalid username or password" để tránh leak info user có tồn tại hay không
-        assertEquals("Invalid username or password", body.get("message"));
+        assertFalse(body.isSuccess());
+        // Generic message - tránh leak info user có tồn tại hay không
+        assertEquals("Invalid username or password", body.getMessage());
     }
 
     @Test
-    @DisplayName("TC062 - handleAccessDenied: Trả về 403 Forbidden")
+    @DisplayName("TC062 - handleAccessDenied: Trả 403 Forbidden")
     void handleAccessDenied_ReturnsForbidden() {
-        // Arrange
         AccessDeniedException ex = new AccessDeniedException("Access denied to resource");
 
-        // Act
-        ResponseEntity<Map<String, Object>> response = handler.handleAccessDenied(ex);
+        ResponseEntity<ApiResponse<Void>> response = handler.handleAccessDenied(ex);
 
-        // Assert
         assertEquals(HttpStatus.FORBIDDEN, response.getStatusCode());
-        Map<String, Object> body = response.getBody();
+        ApiResponse<Void> body = response.getBody();
         assertNotNull(body);
-        assertEquals(403, body.get("status"));
-        assertEquals("Access denied", body.get("message"));
-        assertNotNull(body.get("timestamp"));
+        assertFalse(body.isSuccess());
+        assertEquals("Access denied", body.getMessage());
     }
 
     @Test
-    @DisplayName("TC063 - handleIllegalArgument: Message null vẫn xử lý đúng")
-    void handleIllegalArgument_WhenMessageNull_StillReturnsBadRequest() {
-        // Arrange
-        IllegalArgumentException ex = new IllegalArgumentException();
+    @DisplayName("TC063 - handleDuplicateUsername: Trả 409 Conflict")
+    void handleDuplicateUsername_ReturnsConflict() {
+        DuplicateUsernameException ex = new DuplicateUsernameException("alice");
 
-        // Act
-        ResponseEntity<Map<String, Object>> response = handler.handleIllegalArgument(ex);
+        ResponseEntity<ApiResponse<Void>> response = handler.handleDuplicateUsername(ex);
 
-        // Assert
-        assertEquals(HttpStatus.BAD_REQUEST, response.getStatusCode());
-        Map<String, Object> body = response.getBody();
+        assertEquals(HttpStatus.CONFLICT, response.getStatusCode());
+        ApiResponse<Void> body = response.getBody();
         assertNotNull(body);
-        assertEquals(400, body.get("status"));
-        assertNull(body.get("message"));
+        assertFalse(body.isSuccess());
+        assertTrue(body.getMessage().contains("already exists"));
     }
 }
