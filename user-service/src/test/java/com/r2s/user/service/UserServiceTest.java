@@ -2,12 +2,15 @@ package com.r2s.user.service;
 
 import com.r2s.user.dto.UpdateUserRequest;
 import com.r2s.user.dto.UserResponse;
-import com.r2s.user.entity.Role;
 import com.r2s.user.entity.User;
 import com.r2s.user.kafka.UserDeletedEventProducer;
 import com.r2s.user.repository.UserRepository;
+import com.r2s.user.service.management.UserManagementServiceImpl;
+import com.r2s.user.service.profile.UserProfileServiceImpl;
+import com.r2s.user.service.validation.UserValidationService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
+import org.junit.jupiter.api.Nested;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.extension.ExtendWith;
 import org.mockito.InjectMocks;
@@ -19,342 +22,265 @@ import java.util.Arrays;
 import java.util.List;
 import java.util.Optional;
 
+import static com.r2s.user.testdata.TestDataBuilder.*;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
-import static org.junit.jupiter.api.Assertions.assertFalse;
-import static org.mockito.Mockito.doThrow;
-
-import com.r2s.user.kafka.UserDeletedEventProducer;
-
+/**
+ * Unit test cho UserProfileServiceImpl + UserManagementServiceImpl
+ * (sau khi tach theo package chuc nang).
+ *
+ * <p>Test duoc group theo @Nested classes tuong ung voi tung interface:
+ * - ProfileOperations: test UserProfileServiceImpl
+ * - ManagementOperations: test UserManagementServiceImpl
+ * - DtoSecurity: defense-in-depth (DTO khong expose role/password)
+ *
+ * <p>Su dung TestDataBuilder (Builder Pattern) de tao test data.
+ */
 @ExtendWith(MockitoExtension.class)
+@DisplayName("User services - SOLID refactored")
 class UserServiceTest {
 
-    @Mock
-    private UserRepository userRepository;
-    @Mock
-    private UserDeletedEventProducer userDeletedEventProducer;
+    // ============================================================
+    // 1. PROFILE OPERATIONS (UserProfileServiceImpl)
+    // ============================================================
+    @Nested
+    @DisplayName("Profile operations (UserProfileServiceImpl)")
+    class ProfileOperations {
 
+        @Mock UserRepository userRepository;
+        @Mock UserValidationService userValidationService;   // ← DIP
 
-    @InjectMocks
-    private UserService userService;
+        @InjectMocks UserProfileServiceImpl userProfileService;
 
-    private User user1;
-    private User user2;
-    private UpdateUserRequest updateRequest;
+        private User user1;
+        private User user2;
 
-    @BeforeEach
-    void setUp() {
-        user1 = new User();
-        user1.setId(1L);
-        user1.setUsername("john");
-        user1.setFullName("John Doe");
-        user1.setEmail("john@test.com");
-        user1.setRole(Role.ROLE_USER);
-
-        user2 = new User();
-        user2.setId(2L);
-        user2.setUsername("jane");
-        user2.setFullName("Jane Doe");
-        user2.setEmail("jane@test.com");
-        user2.setRole(Role.ROLE_ADMIN);
-
-        updateRequest = new UpdateUserRequest();
-        updateRequest.setFullName("John Updated");
-        updateRequest.setEmail("john_new@test.com");
-    }
-
-    // ==================== GET ALL USERS ====================
-
-    @Test
-    @DisplayName("TC009 - GetAll: Happy case - returns list of users")
-    void getAllUsers_HappyCase_ReturnsList() {
-        // Given
-        when(userRepository.findAll()).thenReturn(Arrays.asList(user1, user2));
-
-        // When
-        List<UserResponse> result = userService.getAllUsers();
-
-        // Then
-        assertEquals(2, result.size());
-        assertEquals("john", result.get(0).getUsername());
-        assertEquals("jane", result.get(1).getUsername());
-    }
-
-    @Test
-    @DisplayName("TC010 - GetAll: Edge case - empty list when no users")
-    void getAllUsers_WhenNoUsers_ReturnsEmptyList() {
-        // Given
-        when(userRepository.findAll()).thenReturn(List.of());
-
-        // When
-        List<UserResponse> result = userService.getAllUsers();
-
-        // Then
-        assertNotNull(result);
-        assertTrue(result.isEmpty());
-    }
-
-    // ==================== GET BY USERNAME ====================
-
-    @Test
-    @DisplayName("TC011 - GetByUsername: Happy case - returns user")
-    void getUserByUsername_HappyCase_ReturnsUser() {
-        // Given
-        when(userRepository.findByUsername("john")).thenReturn(Optional.of(user1));
-
-        // When
-        UserResponse result = userService.getUserByUsername("john");
-
-        // Then
-        assertNotNull(result);
-        assertEquals("john", result.getUsername());
-        assertEquals("John Doe", result.getFullName());
-    }
-
-    @Test
-    @DisplayName("TC012 - GetByUsername: Worst case - user not found")
-    void getUserByUsername_WhenNotFound_ThrowsException() {
-        // Given
-        when(userRepository.findByUsername("notexist")).thenReturn(Optional.empty());
-
-        // When & Then
-        assertThrows(
-                UsernameNotFoundException.class,
-                () -> userService.getUserByUsername("notexist")
-        );
-    }
-
-    // ==================== UPDATE USER ====================
-
-    @Test
-    @DisplayName("TC013 - UpdateUser: Happy case - update fullName and email")
-    void updateUser_HappyCase_UpdatesUser() {
-        // Given
-        when(userRepository.findByUsername("john")).thenReturn(Optional.of(user1));
-        when(userRepository.save(any(User.class))).thenReturn(user1);
-
-        // When
-        UserResponse result = userService.updateUser("john", updateRequest);
-
-        // Then
-        assertNotNull(result);
-        assertEquals("John Updated", result.getFullName());
-        assertEquals("john_new@test.com", result.getEmail());
-        verify(userRepository, times(1)).save(user1);
-    }
-
-    @Test
-    @DisplayName("TC014 - UpdateUser: Edge case - only update fullName, email is null")
-    void updateUser_WhenOnlyFullName_UpdatesOnlyFullName() {
-        // Given
-        UpdateUserRequest req = new UpdateUserRequest();
-        req.setFullName("Only Name Updated");
-        req.setEmail(null);
-
-        when(userRepository.findByUsername("john")).thenReturn(Optional.of(user1));
-        when(userRepository.save(any(User.class))).thenReturn(user1);
-
-        // When
-        UserResponse result = userService.updateUser("john", req);
-
-        // Then
-        assertEquals("Only Name Updated", result.getFullName());
-        assertEquals("john@test.com", result.getEmail()); // email không đổi
-    }
-
-    @Test
-    @DisplayName("TC015 - UpdateUser: Worst case - user not found")
-    void updateUser_WhenUserNotFound_ThrowsException() {
-        // Given
-        when(userRepository.findByUsername("notexist")).thenReturn(Optional.empty());
-
-        // When & Then
-        assertThrows(
-                UsernameNotFoundException.class,
-                () -> userService.updateUser("notexist", updateRequest)
-        );
-        verify(userRepository, never()).save(any(User.class));
-    }
-
-    // ==================== DELETE USER ====================
-
-    @Test
-    @DisplayName("TC016 - DeleteUser: Happy case - delete existing user and publish event")
-    void deleteUser_HappyCase_DeletesUser() {
-        // Given
-        when(userRepository.findByUsername("john")).thenReturn(Optional.of(user1));
-        doNothing().when(userRepository).deleteByUsername("john");
-
-        // When
-        userService.deleteUser("john");
-
-        // Then
-        verify(userRepository, times(1)).deleteByUsername("john");
-        verify(userDeletedEventProducer, times(1))
-                .sendUserDeletedEvent(any(com.r2s.core.event.UserDeletedEvent.class));
-    }
-
-    @Test
-    @DisplayName("TC017 - DeleteUser: Worst case - user not found")
-    void deleteUser_WhenUserNotFound_ThrowsException() {
-        // Given
-        when(userRepository.findByUsername("notexist")).thenReturn(Optional.empty());
-
-        // When & Then
-        assertThrows(
-                UsernameNotFoundException.class,
-                () -> userService.deleteUser("notexist")
-        );
-        verify(userRepository, never()).deleteByUsername(anyString());
-    }
-
-    // ==================== TC032-TC033: GET USER BY USERNAME ====================
-
-    @Test
-    @DisplayName("TC032 - GetByUsername: Edge case - username null throws exception")
-    void getUserByUsername_WhenNull_ThrowsException() {
-        // Given
-        when(userRepository.findByUsername(null)).thenReturn(Optional.empty());
-
-        // When & Then
-        assertThrows(UsernameNotFoundException.class,
-                () -> userService.getUserByUsername(null));
-    }
-
-    @Test
-    @DisplayName("TC033 - GetByUsername: Edge case - username empty throws exception")
-    void getUserByUsername_WhenEmpty_ThrowsException() {
-        // Given
-        when(userRepository.findByUsername("")).thenReturn(Optional.empty());
-
-        // When & Then
-        assertThrows(UsernameNotFoundException.class,
-                () -> userService.getUserByUsername(""));
-    }
-
-    // ==================== TC034-TC038: UPDATE USER ====================
-
-    @Test
-    @DisplayName("TC034 - UpdateUser: Edge case - invalid email format")
-    void updateUser_WhenInvalidEmailFormat_ProcessesAtServiceLayer() {
-        // Given
-        UpdateUserRequest req = new UpdateUserRequest();
-        req.setFullName("John");
-        req.setEmail("abc"); // Invalid format
-
-        when(userRepository.findByUsername("john")).thenReturn(Optional.of(user1));
-        when(userRepository.save(any(User.class))).thenReturn(user1);
-
-        // When - Service không validate format, @Email annotation ở DTO sẽ chặn ở Controller
-        UserResponse result = userService.updateUser("john", req);
-
-        // Then
-        assertNotNull(result);
-        // Validation thực tế xảy ra ở @Valid của Controller (test ở Phần 3)
-    }
-
-    @Test
-    @DisplayName("TC035 - UpdateUser: Worst case - email already exists throws DB exception")
-    void updateUser_WhenEmailExists_ThrowsException() {
-        // Given
-        UpdateUserRequest req = new UpdateUserRequest();
-        req.setFullName("John");
-        req.setEmail("existing@test.com");
-
-        when(userRepository.findByUsername("john")).thenReturn(Optional.of(user1));
-        when(userRepository.save(any(User.class)))
-                .thenThrow(new org.springframework.dao.DataIntegrityViolationException(
-                        "Email already exists"
-                ));
-
-        // When & Then
-        assertThrows(
-                org.springframework.dao.DataIntegrityViolationException.class,
-                () -> userService.updateUser("john", req)
-        );
-    }
-
-    @Test
-    @DisplayName("TC036 - UpdateUser: Security - DTO does not expose role field")
-    void updateUser_DtoDoesNotExposeRole() throws NoSuchFieldException {
-        // Verify DTO design: UpdateUserRequest không có field 'role'
-        // Đây là defense-in-depth: dù attacker gửi role trong JSON, Spring không bind vào DTO
-        Class<UpdateUserRequest> clazz = UpdateUserRequest.class;
-        java.lang.reflect.Field[] fields = clazz.getDeclaredFields();
-
-        boolean hasRoleField = false;
-        for (java.lang.reflect.Field f : fields) {
-            if (f.getName().equalsIgnoreCase("role")) {
-                hasRoleField = true;
-                break;
-            }
+        @BeforeEach
+        void setUp() {
+            user1 = aUser();
+            user2 = anAdminUser();
         }
 
-        assertFalse(hasRoleField, "UpdateUserRequest must NOT have role field for security");
-    }
+        @Test
+        @DisplayName("TC009 - getAllUsers happy case returns list")
+        void getAllUsers_HappyCase_ReturnsList() {
+            when(userRepository.findAll()).thenReturn(Arrays.asList(user1, user2));
 
-    @Test
-    @DisplayName("TC037 - UpdateUser: Security - DTO does not expose password field")
-    void updateUser_DtoDoesNotExposePassword() {
-        // Verify DTO design: UpdateUserRequest không có field 'password'
-        Class<UpdateUserRequest> clazz = UpdateUserRequest.class;
-        java.lang.reflect.Field[] fields = clazz.getDeclaredFields();
+            List<UserResponse> result = userProfileService.getAllUsers();
 
-        boolean hasPasswordField = false;
-        for (java.lang.reflect.Field f : fields) {
-            if (f.getName().equalsIgnoreCase("password")) {
-                hasPasswordField = true;
-                break;
-            }
+            assertEquals(2, result.size());
+            assertEquals("john", result.get(0).getUsername());
+            assertEquals("jane", result.get(1).getUsername());
         }
 
-        assertFalse(hasPasswordField, "UpdateUserRequest must NOT have password field for security");
+        @Test
+        @DisplayName("TC010 - getAllUsers empty list when no users")
+        void getAllUsers_WhenNoUsers_ReturnsEmptyList() {
+            when(userRepository.findAll()).thenReturn(List.of());
+
+            List<UserResponse> result = userProfileService.getAllUsers();
+
+            assertNotNull(result);
+            assertTrue(result.isEmpty());
+        }
+
+        @Test
+        @DisplayName("TC011 - getUserByUsername happy case returns user")
+        void getUserByUsername_HappyCase_ReturnsUser() {
+            when(userRepository.findByUsername(TEST_USERNAME)).thenReturn(Optional.of(user1));
+
+            UserResponse result = userProfileService.getUserByUsername(TEST_USERNAME);
+
+            assertNotNull(result);
+            assertEquals(TEST_USERNAME, result.getUsername());
+            assertEquals(TEST_FULLNAME, result.getFullName());
+        }
+
+        @Test
+        @DisplayName("TC012 - getUserByUsername user not found throws")
+        void getUserByUsername_WhenNotFound_ThrowsException() {
+            when(userRepository.findByUsername("notexist")).thenReturn(Optional.empty());
+
+            assertThrows(UsernameNotFoundException.class,
+                    () -> userProfileService.getUserByUsername("notexist"));
+        }
+
+        @Test
+        @DisplayName("TC013 - updateUser happy case updates fullName + email")
+        void updateUser_HappyCase_UpdatesUser() {
+            UpdateUserRequest req = anUpdateRequest();
+            when(userRepository.findByUsername(TEST_USERNAME)).thenReturn(Optional.of(user1));
+            when(userRepository.save(any(User.class))).thenReturn(user1);
+
+            UserResponse result = userProfileService.updateUser(TEST_USERNAME, req);
+
+            assertNotNull(result);
+            assertEquals("John Updated", result.getFullName());
+            assertEquals("john_new@test.com", result.getEmail());
+            verify(userValidationService).validateUserUpdate(TEST_USERNAME, req);   // Verify DIP
+            verify(userRepository, times(1)).save(user1);
+        }
+
+        @Test
+        @DisplayName("TC014 - updateUser only fullName, email null preserves email")
+        void updateUser_WhenOnlyFullName_PreservesEmail() {
+            UpdateUserRequest req = anUpdateRequest("Only Name Updated", null);
+            when(userRepository.findByUsername(TEST_USERNAME)).thenReturn(Optional.of(user1));
+            when(userRepository.save(any(User.class))).thenReturn(user1);
+
+            UserResponse result = userProfileService.updateUser(TEST_USERNAME, req);
+
+            assertEquals("Only Name Updated", result.getFullName());
+            assertEquals(TEST_EMAIL, result.getEmail());
+        }
+
+        @Test
+        @DisplayName("TC015 - updateUser user not found throws")
+        void updateUser_WhenUserNotFound_ThrowsException() {
+            when(userRepository.findByUsername("notexist")).thenReturn(Optional.empty());
+
+            assertThrows(UsernameNotFoundException.class,
+                    () -> userProfileService.updateUser("notexist", anUpdateRequest()));
+            verify(userRepository, never()).save(any(User.class));
+        }
+
+        @Test
+        @DisplayName("TC032 - getUserByUsername null throws")
+        void getUserByUsername_WhenNull_ThrowsException() {
+            when(userRepository.findByUsername(null)).thenReturn(Optional.empty());
+            assertThrows(UsernameNotFoundException.class,
+                    () -> userProfileService.getUserByUsername(null));
+        }
+
+        @Test
+        @DisplayName("TC033 - getUserByUsername empty throws")
+        void getUserByUsername_WhenEmpty_ThrowsException() {
+            when(userRepository.findByUsername("")).thenReturn(Optional.empty());
+            assertThrows(UsernameNotFoundException.class,
+                    () -> userProfileService.getUserByUsername(""));
+        }
+
+        @Test
+        @DisplayName("TC034 - updateUser invalid email format processes at service")
+        void updateUser_WhenInvalidEmailFormat_ProcessesAtServiceLayer() {
+            UpdateUserRequest req = anUpdateRequest("John", "abc");
+            when(userRepository.findByUsername(TEST_USERNAME)).thenReturn(Optional.of(user1));
+            when(userRepository.save(any(User.class))).thenReturn(user1);
+
+            UserResponse result = userProfileService.updateUser(TEST_USERNAME, req);
+
+            assertNotNull(result);
+        }
+
+        @Test
+        @DisplayName("TC035 - updateUser DB integrity violation propagates")
+        void updateUser_WhenEmailExists_ThrowsException() {
+            UpdateUserRequest req = anUpdateRequest("John", "existing@test.com");
+            when(userRepository.findByUsername(TEST_USERNAME)).thenReturn(Optional.of(user1));
+            when(userRepository.save(any(User.class)))
+                    .thenThrow(new org.springframework.dao.DataIntegrityViolationException(
+                            "Email already exists"));
+
+            assertThrows(org.springframework.dao.DataIntegrityViolationException.class,
+                    () -> userProfileService.updateUser(TEST_USERNAME, req));
+        }
+
+        @Test
+        @DisplayName("TC038 - updateUser request null throws NPE")
+        void updateUser_WhenRequestNull_ThrowsException() {
+            doThrow(new NullPointerException("request is null"))
+                    .when(userValidationService).validateUserUpdate(TEST_USERNAME, null);
+
+            assertThrows(NullPointerException.class,
+                    () -> userProfileService.updateUser(TEST_USERNAME, null));
+        }
     }
 
-    @Test
-    @DisplayName("TC038 - UpdateUser: Edge case - request null throws NPE")
-    void updateUser_WhenRequestNull_ThrowsException() {
-        // Given
-        when(userRepository.findByUsername("john")).thenReturn(Optional.of(user1));
+    // ============================================================
+    // 2. MANAGEMENT OPERATIONS (UserManagementServiceImpl)
+    // ============================================================
+    @Nested
+    @DisplayName("Management operations (UserManagementServiceImpl)")
+    class ManagementOperations {
 
-        // When & Then
-        assertThrows(NullPointerException.class,
-                () -> userService.updateUser("john", null));
+        @Mock UserRepository userRepository;
+        @Mock UserDeletedEventProducer userDeletedEventProducer;
+
+        @InjectMocks UserManagementServiceImpl userManagementService;
+
+        private User user1;
+
+        @BeforeEach
+        void setUp() {
+            user1 = aUser();
+        }
+
+        @Test
+        @DisplayName("TC016 - deleteUser happy case deletes + publishes event")
+        void deleteUser_HappyCase_DeletesUser() {
+            when(userRepository.findByUsername(TEST_USERNAME)).thenReturn(Optional.of(user1));
+            doNothing().when(userRepository).deleteByUsername(TEST_USERNAME);
+
+            userManagementService.deleteUser(TEST_USERNAME);
+
+            verify(userRepository, times(1)).deleteByUsername(TEST_USERNAME);
+            verify(userDeletedEventProducer, times(1))
+                    .sendUserDeletedEvent(any(com.r2s.core.event.UserDeletedEvent.class));
+        }
+
+        @Test
+        @DisplayName("TC017 - deleteUser user not found throws")
+        void deleteUser_WhenUserNotFound_ThrowsException() {
+            when(userRepository.findByUsername("notexist")).thenReturn(Optional.empty());
+
+            assertThrows(UsernameNotFoundException.class,
+                    () -> userManagementService.deleteUser("notexist"));
+            verify(userRepository, never()).deleteByUsername(anyString());
+        }
+
+        @Test
+        @DisplayName("TC040 - deleteUser kafka failure propagates")
+        void deleteUser_WhenPublishFails_ThrowsException() {
+            when(userRepository.findByUsername(TEST_USERNAME)).thenReturn(Optional.of(user1));
+            doNothing().when(userRepository).deleteByUsername(TEST_USERNAME);
+            doThrow(new RuntimeException("Kafka broker unavailable"))
+                    .when(userDeletedEventProducer)
+                    .sendUserDeletedEvent(any(com.r2s.core.event.UserDeletedEvent.class));
+
+            assertThrows(RuntimeException.class,
+                    () -> userManagementService.deleteUser(TEST_USERNAME));
+        }
     }
 
-    // ==================== TC039-TC040: DELETE USER ====================
+    // ============================================================
+    // 3. DTO SECURITY (defense-in-depth)
+    // ============================================================
+    @Nested
+    @DisplayName("DTO security (defense-in-depth)")
+    class DtoSecurity {
 
-    @Test
-    @DisplayName("TC039 - DeleteUser: Happy case - delete and publish event")
-    void deleteUser_HappyCase_PublishesEvent() {
-        // Given
-        when(userRepository.findByUsername("john")).thenReturn(Optional.of(user1));
-        doNothing().when(userRepository).deleteByUsername("john");
+        @Test
+        @DisplayName("TC036 - UpdateUserRequest does NOT expose role field")
+        void updateUser_DtoDoesNotExposeRole() {
+            assertFalse(hasField(UpdateUserRequest.class, "role"),
+                    "UpdateUserRequest must NOT have role field");
+        }
 
-        // When
-        userService.deleteUser("john");
+        @Test
+        @DisplayName("TC037 - UpdateUserRequest does NOT expose password field")
+        void updateUser_DtoDoesNotExposePassword() {
+            assertFalse(hasField(UpdateUserRequest.class, "password"),
+                    "UpdateUserRequest must NOT have password field");
+        }
 
-        // Then
-        verify(userRepository, times(1)).deleteByUsername("john");
-        verify(userDeletedEventProducer, times(1))
-                .sendUserDeletedEvent(any(com.r2s.core.event.UserDeletedEvent.class));
-    }
-
-    @Test
-    @DisplayName("TC040 - DeleteUser: Worst case - publish event fails")
-    void deleteUser_WhenPublishFails_ThrowsException() {
-        // Given
-        when(userRepository.findByUsername("john")).thenReturn(Optional.of(user1));
-        doNothing().when(userRepository).deleteByUsername("john");
-        doThrow(new RuntimeException("Kafka broker unavailable"))
-                .when(userDeletedEventProducer)
-                .sendUserDeletedEvent(any(com.r2s.core.event.UserDeletedEvent.class));
-
-        // When & Then
-        assertThrows(RuntimeException.class,
-                () -> userService.deleteUser("john"));
+        private boolean hasField(Class<?> clazz, String fieldName) {
+            for (java.lang.reflect.Field f : clazz.getDeclaredFields()) {
+                if (f.getName().equalsIgnoreCase(fieldName)) return true;
+            }
+            return false;
+        }
     }
 }

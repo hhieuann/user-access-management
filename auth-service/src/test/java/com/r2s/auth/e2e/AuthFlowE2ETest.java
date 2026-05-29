@@ -60,7 +60,8 @@ class AuthFlowE2ETest {
                 String.class
         );
 
-        assertEquals(HttpStatus.OK, registerResponse.getStatusCode());
+        // POST /register trả 201 CREATED theo REST semantic (đã refactor SOLID)
+        assertEquals(HttpStatus.CREATED, registerResponse.getStatusCode());
 
         // Step 2: Verify user da co trong DB
         User savedUser = userRepository.findByUsername("e2euser").orElseThrow();

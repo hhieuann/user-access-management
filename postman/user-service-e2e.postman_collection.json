@@ -1,0 +1,345 @@
+{
+  "info": {
+    "_postman_id": "f3b4c5e1-uam-user-e2e-2026",
+    "name": "UAM - User Service E2E",
+    "description": "End-to-End test cho user-service: profile management + admin operations.\n\n**Số test:** 10 requests\n\n**Yêu cầu:**\n- auth-service chạy ở localhost:8081\n- user-service chạy ở localhost:8082\n- Cả 2 service phải kết nối được cùng DB hoặc đã sync user qua Kafka\n\n**Flow:**\n1-2. Setup: register + login qua auth-service (8081) để lấy token\n3-7. Profile ops trên user-service (8082) với token đã lấy\n8-10. Admin ops - dùng token ROLE_USER nên expect 403\n\n**Note:** Test này KHÔNG test happy admin path (cần pre-seeded admin trong DB). Test negative để chứng minh authorization hoạt động.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "item": [
+    {
+      "name": "1. Setup - Register Test User (via auth-service)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "const randomSuffix = Math.floor(Math.random() * 1000000);",
+              "const username = 'e2e_userservice_' + randomSuffix;",
+              "pm.environment.set('username', username);",
+              "console.log('Will register username:', username);"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Setup: register success 201', () => pm.response.to.have.status(201));",
+              "",
+              "const json = pm.response.json();",
+              "pm.expect(json.success).to.be.true;",
+              "pm.expect(json.data.token).to.be.a('string').and.not.empty;",
+              "",
+              "pm.environment.set('token', json.data.token);",
+              "console.log('Setup token:', json.data.token.substring(0, 30) + '...');"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}"
+        },
+        "url": {
+          "raw": "{{authBaseUrl}}/auth/register",
+          "host": ["{{authBaseUrl}}"],
+          "path": ["auth", "register"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "2. Setup - Login to refresh token",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Login success 200', () => pm.response.to.have.status(200));",
+              "",
+              "const json = pm.response.json();",
+              "pm.expect(json.data.token).to.be.a('string');",
+              "pm.environment.set('token', json.data.token);"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "POST",
+        "header": [{"key": "Content-Type", "value": "application/json"}],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"username\": \"{{username}}\",\n  \"password\": \"{{password}}\"\n}"
+        },
+        "url": {
+          "raw": "{{authBaseUrl}}/auth/login",
+          "host": ["{{authBaseUrl}}"],
+          "path": ["auth", "login"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "3. Get My Profile - Happy Path (200)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "",
+              "const json = pm.response.json();",
+              "pm.test('ApiResponse: success=true', () => pm.expect(json.success).to.be.true);",
+              "pm.test('Data contains username matching env', () => {",
+              "    pm.expect(json.data.username).to.equal(pm.environment.get('username'));",
+              "});",
+              "pm.test('Data has role field', () => {",
+              "    pm.expect(json.data.role).to.equal('ROLE_USER');",
+              "});",
+              "pm.test('Message: Profile retrieved', () => {",
+              "    pm.expect(json.message).to.include('Profile');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+        "url": {
+          "raw": "{{userBaseUrl}}/users/me",
+          "host": ["{{userBaseUrl}}"],
+          "path": ["users", "me"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "4. Get My Profile - No Token (401)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 401 Unauthorized', () => pm.response.to.have.status(401));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{userBaseUrl}}/users/me",
+          "host": ["{{userBaseUrl}}"],
+          "path": ["users", "me"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "5. Get My Profile - Invalid Token (401)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 401 Unauthorized', () => pm.response.to.have.status(401));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [{"key": "Authorization", "value": "Bearer invalid.token.here"}],
+        "url": {
+          "raw": "{{userBaseUrl}}/users/me",
+          "host": ["{{userBaseUrl}}"],
+          "path": ["users", "me"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "6. Update My Profile - Happy Path (200)",
+      "event": [
+        {
+          "listen": "prerequest",
+          "script": {
+            "exec": [
+              "// Generate unique email cho mỗi run",
+              "const randomSuffix = Math.floor(Math.random() * 1000000);",
+              "pm.environment.set('newEmail', 'updated_' + randomSuffix + '@e2e.test');"
+            ],
+            "type": "text/javascript"
+          }
+        },
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200', () => pm.response.to.have.status(200));",
+              "",
+              "const json = pm.response.json();",
+              "pm.test('Success + data updated', () => {",
+              "    pm.expect(json.success).to.be.true;",
+              "    pm.expect(json.data.fullName).to.equal('E2E Updated Name');",
+              "    pm.expect(json.data.email).to.equal(pm.environment.get('newEmail'));",
+              "});",
+              "pm.test('Message: Profile updated', () => {",
+              "    pm.expect(json.message).to.include('updated');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "header": [
+          {"key": "Authorization", "value": "Bearer {{token}}"},
+          {"key": "Content-Type", "value": "application/json"}
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"fullName\": \"E2E Updated Name\",\n  \"email\": \"{{newEmail}}\"\n}"
+        },
+        "url": {
+          "raw": "{{userBaseUrl}}/users/me",
+          "host": ["{{userBaseUrl}}"],
+          "path": ["users", "me"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "7. Update My Profile - Invalid Email Format (400)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 400 Bad Request', () => pm.response.to.have.status(400));",
+              "",
+              "const json = pm.response.json();",
+              "pm.test('ApiResponse: success=false', () => pm.expect(json.success).to.be.false);",
+              "pm.test('Message mentions email', () => {",
+              "    pm.expect(json.message.toLowerCase()).to.include('email');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "PUT",
+        "header": [
+          {"key": "Authorization", "value": "Bearer {{token}}"},
+          {"key": "Content-Type", "value": "application/json"}
+        ],
+        "body": {
+          "mode": "raw",
+          "raw": "{\n  \"fullName\": \"E2E Test\",\n  \"email\": \"not-a-valid-email-format\"\n}"
+        },
+        "url": {
+          "raw": "{{userBaseUrl}}/users/me",
+          "host": ["{{userBaseUrl}}"],
+          "path": ["users", "me"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "8. List All Users - Non-Admin Forbidden (403)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 403 Forbidden', () => pm.response.to.have.status(403));",
+              "",
+              "const json = pm.response.json();",
+              "pm.test('ApiResponse: success=false', () => pm.expect(json.success).to.be.false);",
+              "pm.test('Message: Access denied', () => {",
+              "    pm.expect(json.message.toLowerCase()).to.include('access denied');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+        "url": {
+          "raw": "{{userBaseUrl}}/users",
+          "host": ["{{userBaseUrl}}"],
+          "path": ["users"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "9. Delete Other User - Non-Admin Forbidden (403)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 403 Forbidden', () => pm.response.to.have.status(403));"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "DELETE",
+        "header": [{"key": "Authorization", "value": "Bearer {{token}}"}],
+        "url": {
+          "raw": "{{userBaseUrl}}/users/some_other_user",
+          "host": ["{{userBaseUrl}}"],
+          "path": ["users", "some_other_user"]
+        }
+      },
+      "response": []
+    },
+    {
+      "name": "10. Actuator Health - Public (200)",
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "exec": [
+              "pm.test('Status 200 OK', () => pm.response.to.have.status(200));",
+              "",
+              "const json = pm.response.json();",
+              "pm.test('Health status = UP', () => {",
+              "    pm.expect(json.status).to.equal('UP');",
+              "});"
+            ],
+            "type": "text/javascript"
+          }
+        }
+      ],
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": {
+          "raw": "{{userBaseUrl}}/actuator/health",
+          "host": ["{{userBaseUrl}}"],
+          "path": ["actuator", "health"]
+        }
+      },
+      "response": []
+    }
+  ]
+}

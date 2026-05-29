@@ -5,8 +5,9 @@ import com.r2s.auth.dto.RegisterRequest;
 import com.r2s.auth.entity.Role;
 import com.r2s.auth.entity.User;
 import com.r2s.auth.repository.UserRepository;
-import com.r2s.auth.service.AuthService;
+import com.r2s.auth.service.registration.RegistrationService;
 import com.r2s.core.event.UserRegisteredEvent;
+import com.r2s.core.exception.DuplicateUsernameException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -26,19 +27,18 @@ import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.when;
 
 /**
- * Integration Test sử dụng H2 in-memory database (mode PostgreSQL).
+ * Integration Test su dung H2 in-memory database (mode PostgreSQL).
  *
- * Note: Đã setup Testcontainers + PostgreSQL nhưng gặp conflict
- * với Docker Desktop version 29.4.0 (mới release 2026).
- * Tạm dùng H2 mode PostgreSQL để mô phỏng behavior của PostgreSQL thật.
+ * <p>Sau refactor SOLID Round 3: inject RegistrationService (interface)
+ * thay vi AuthService (concrete) - DIP applied.
  */
 @SpringBootTest
 @ActiveProfiles("test")
-@DisplayName("Integration Test: AuthService + Repository + DB")
+@DisplayName("Integration Test: RegistrationService + Repository + DB")
 class AuthServiceIntegrationTest {
 
     @Autowired
-    private AuthService authService;
+    private RegistrationService registrationService;   // ← DIP: inject interface
 
     @Autowired
     private UserRepository userRepository;
@@ -50,7 +50,7 @@ class AuthServiceIntegrationTest {
     void setUp() {
         userRepository.deleteAll();
 
-        // Mock SecurityContext (admin đăng nhập)
+        // Mock SecurityContext (admin đã login)
         Authentication auth = mock(Authentication.class);
         when(auth.getName()).thenReturn("admin");
         SecurityContext securityContext = mock(SecurityContext.class);
@@ -59,21 +59,17 @@ class AuthServiceIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT001 - Register: User được lưu vào DB và query lại tìm thấy")
+    @DisplayName("IT001 - Register: user được lưu vào DB và query lại tìm thấy")
     void register_SavesToDbAndCanBeFound() {
-        // Arrange
         RegisterRequest request = new RegisterRequest();
         request.setUsername("integration_user");
         request.setPassword("password123");
 
-        // Act
-        AuthResponse response = authService.register(request);
+        AuthResponse response = registrationService.register(request);
 
-        // Assert
         assertNotNull(response);
         assertNotNull(response.getToken());
 
-        // Verify: data thực sự được persist trong DB
         Optional<User> savedUser = userRepository.findByUsername("integration_user");
         assertTrue(savedUser.isPresent());
         assertEquals("integration_user", savedUser.get().getUsername());
@@ -83,26 +79,23 @@ class AuthServiceIntegrationTest {
     }
 
     @Test
-    @DisplayName("IT002 - Register: Duplicate username throws exception")
-    void register_WhenDuplicateUsername_ThrowsException() {
-        // Arrange
+    @DisplayName("IT002 - Register: duplicate username throws DuplicateUsernameException")
+    void register_WhenDuplicateUsername_ThrowsDuplicateException() {
         RegisterRequest request = new RegisterRequest();
         request.setUsername("duplicate_user");
         request.setPassword("password123");
-        authService.register(request);
+        registrationService.register(request);
 
         RegisterRequest duplicate = new RegisterRequest();
         duplicate.setUsername("duplicate_user");
         duplicate.setPassword("anotherpassword");
 
-        // Act & Assert
-        IllegalArgumentException ex = assertThrows(
-                IllegalArgumentException.class,
-                () -> authService.register(duplicate)
+        DuplicateUsernameException ex = assertThrows(
+                DuplicateUsernameException.class,
+                () -> registrationService.register(duplicate)
         );
         assertTrue(ex.getMessage().contains("already exists"));
 
-        // Verify: DB chỉ có 1 user
         long count = userRepository.findAll().stream()
                 .filter(u -> "duplicate_user".equals(u.getUsername()))
                 .count();
