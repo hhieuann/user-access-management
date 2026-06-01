@@ -13,7 +13,7 @@ import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.boot.test.context.SpringBootTest;
-import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.context.bean.override.mockito.MockitoBean;
 import org.springframework.kafka.core.KafkaTemplate;
 import org.springframework.test.context.ActiveProfiles;
 
@@ -35,7 +35,7 @@ class UserServiceIntegrationTest {
     @Autowired private UserManagementService userManagementService;
     @Autowired private UserRepository userRepository;
 
-    @MockBean
+    @MockitoBean
     private KafkaTemplate<String, UserDeletedEvent> kafkaTemplate;
 
     @BeforeEach
