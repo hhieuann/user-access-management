@@ -70,11 +70,11 @@ com.r2s.user.service/
 ```
 Module          | Tests | Pass | Fail | Ghi chú
 ----------------|-------|------|------|------------------------------
-core            |   8   |  8   |  0   | GlobalExceptionHandlerTest (mới)
+core            |  26   |  26  |  0   | Exception/Response/Writer/Logger tests
 auth-service    |  43   |  43  |  0   | gồm 2 E2E (AuthFlowE2ETest)
 user-service    |  27   |  27  |  0   |
 ──────────────────────────────────────────────────────────────────
-Total (đầy đủ)  |  78   |  78  |  0   ✅ (chạy trên Linux/CI có Kafka)
+Total (đầy đủ)  |  96   |  96  |  0   ✅ (chạy trên Linux/CI có Kafka)
 ```
 
 **Về E2E `AuthFlowE2ETest` (2 tests):**
@@ -84,14 +84,19 @@ Total (đầy đủ)  |  78   |  78  |  0   ✅ (chạy trên Linux/CI có Kafka
   ```bash
   mvn test -Dtest='!AuthFlowE2ETest' -Dsurefire.failIfNoSpecifiedTests=false
   ```
-  → khi đó: core 8 + auth 41 + user 27 = **76 tests pass**.
+  → khi đó: core 26 + auth 41 + user 27 = **94 tests pass**.
 - Đây là giới hạn môi trường Windows, **không phải** E2E bị exclude khỏi pipeline.
-  Pipeline GitLab vẫn chạy đầy đủ 78 tests.
+  Pipeline GitLab vẫn chạy đầy đủ 96 tests.
 
-> **So với báo cáo trước (72 tests):** số tăng lên 78 do (1) thêm 8 test
-> `GlobalExceptionHandlerTest` ở core, (2) thêm test assert body JSON cho
-> JWT/rate-limit, (3) E2E giờ được tính vào tổng (chạy trên CI). Đồng thời
-> đã **xóa** `AuthExceptionHandlerTest` (5 tests) khi gộp về handler chung.
+> **So với báo cáo trước (72 tests):** số tăng lên 96 do (1) thêm 26 test cho
+> core (GlobalExceptionHandler + ApiResponse + ResponseBuilder + ApiResponseWriter
+> + LoggerUtil), (2) thêm test assert body JSON cho JWT/rate-limit, (3) E2E giờ
+> được tính vào tổng (chạy trên CI). Đồng thời đã **xóa** `AuthExceptionHandlerTest`
+> (5 tests) khi gộp về handler chung.
+>
+> **Lưu ý JaCoCo:** sau khi thêm test cho core, JaCoCo bắt đầu đo coverage module
+> core (trước đây skip vì không có test). Đã thêm exclude `**/event/**` (data-carrier
+> như dto/entity) và viết đủ test để core đạt LINE ≥ 85%.
 
 ### JaCoCo Coverage Gate
 
