@@ -112,4 +112,29 @@ class GlobalExceptionHandlerTest {
         // Khong leak chi tiet exception ra client
         assertEquals("An unexpected error occurred", res.getBody().getMessage());
     }
+
+    @Test
+    @DisplayName("GEH09 - CustomException (legacy) -> 400 Bad Request")
+    void handleCustom_Returns400() {
+        ResponseEntity<ApiResponse<Void>> res =
+                handler.handleCustom(new CustomException("custom error"));
+
+        assertEquals(HttpStatus.BAD_REQUEST, res.getStatusCode());
+        assertFalse(res.getBody().isSuccess());
+        assertEquals("custom error", res.getBody().getMessage());
+    }
+
+    @Test
+    @DisplayName("GEH10 - Domain exception messages đúng nội dung")
+    void domainExceptionMessages() {
+        assertTrue(new DuplicateUsernameException("bob").getMessage().contains("bob"));
+        assertTrue(new DuplicateEmailException("b@c.com").getMessage().contains("b@c.com"));
+        assertEquals("custom", new BusinessException("custom").getMessage());
+
+        // BusinessException 2-arg constructor (message + cause)
+        Throwable cause = new RuntimeException("root");
+        BusinessException ex = new BusinessException("wrapped", cause);
+        assertEquals("wrapped", ex.getMessage());
+        assertSame(cause, ex.getCause());
+    }
 }

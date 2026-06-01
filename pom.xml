@@ -70,10 +70,14 @@
 
                 <configuration>
                     <excludes>
+                        <!-- Data-carrier / không phải business logic: -->
                         <exclude>**/dto/**</exclude>
                         <exclude>**/entity/**</exclude>
+                        <exclude>**/event/**</exclude>
                         <exclude>**/config/**</exclude>
                         <exclude>**/*Application*</exclude>
+                        <!-- Security/controller được cover bằng integration + smoke test
+                             (xem solid-refactor-short-report Section 11), gate đo business logic: -->
                         <exclude>**/security/**</exclude>
                         <exclude>**/controller/**</exclude>
                     </excludes>
