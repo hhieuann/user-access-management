@@ -1,13 +1,11 @@
 package com.r2s.user.security;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.r2s.core.response.ApiResponse;
+import com.r2s.core.response.ApiResponseWriter;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.HttpStatus;
-import org.springframework.http.MediaType;
 import org.springframework.security.core.AuthenticationException;
 import org.springframework.security.web.AuthenticationEntryPoint;
 import org.springframework.stereotype.Component;
@@ -17,13 +15,15 @@ import java.io.IOException;
 /**
  * Custom AuthenticationEntryPoint cho user-service - tra ApiResponse format
  * cho 401 Unauthorized errors.
+ *
+ * <p>Dùng chung {@link ApiResponseWriter} với JwtFilter (DRY).
  */
 @Component
 @RequiredArgsConstructor
 @Slf4j
 public class ApiResponseAuthenticationEntryPoint implements AuthenticationEntryPoint {
 
-    private final ObjectMapper objectMapper;
+    private final ApiResponseWriter apiResponseWriter;
 
     @Override
     public void commence(HttpServletRequest request,
@@ -31,10 +31,7 @@ public class ApiResponseAuthenticationEntryPoint implements AuthenticationEntryP
                          AuthenticationException authException) throws IOException {
         log.warn("Authentication required: {}", request.getRequestURI());
 
-        response.setStatus(HttpStatus.UNAUTHORIZED.value());
-        response.setContentType(MediaType.APPLICATION_JSON_VALUE);
-
-        ApiResponse<Void> body = ApiResponse.error("Authentication required");
-        objectMapper.writeValue(response.getWriter(), body);
+        apiResponseWriter.writeError(
+                response, HttpStatus.UNAUTHORIZED.value(), "Authentication required");
     }
 }
