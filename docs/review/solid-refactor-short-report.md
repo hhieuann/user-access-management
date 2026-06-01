@@ -2,8 +2,12 @@
 
 **Project:** User Access Management System
 **Người thực hiện:** Nguyễn Hiếu An
-**Ngày báo cáo:** 28/05/2026
-**Status:** ✅ COMPLETED — sẵn sàng review
+**Ngày báo cáo:** 28/05/2026 (cập nhật 01/06/2026 theo review của thầy)
+**Status:** ✅ COMPLETED — đã áp dụng follow-up review 2026-05-31
+
+> **Cập nhật 01/06/2026:** Đã xử lý 5 findings trong
+> `docs/review/solid-refactor-review-20260531.md`. Xem **Section 11 — Follow-up review fixes**
+> ở cuối tài liệu. Các số liệu test ở Section 3 đã được cập nhật cho khớp trạng thái hiện tại.
 
 ---
 
@@ -61,19 +65,33 @@ com.r2s.user.service/
 
 ## 3. Test Coverage
 
-### Test pass
+### Test pass (cập nhật 01/06/2026)
 
 ```
-Module          | Tests | Pass | Fail
-----------------|-------|------|-----
-core            |   0   |  -   |  -
-auth-service    |  45   |  45  |  0
-user-service    |  27   |  27  |  0
-─────────────────────────────────────
-Total           |  72   |  72  |  0  ✅
+Module          | Tests | Pass | Fail | Ghi chú
+----------------|-------|------|------|------------------------------
+core            |   8   |  8   |  0   | GlobalExceptionHandlerTest (mới)
+auth-service    |  43   |  43  |  0   | gồm 2 E2E (AuthFlowE2ETest)
+user-service    |  27   |  27  |  0   |
+──────────────────────────────────────────────────────────────────
+Total (đầy đủ)  |  78   |  78  |  0   ✅ (chạy trên Linux/CI có Kafka)
 ```
 
-(Loại trừ 2 E2E tests `AuthFlowE2ETest` — vấn đề `@EmbeddedKafka` không mở loopback connection trên Windows local, đã ghi nhận trong Testing_Guide.md)
+**Về E2E `AuthFlowE2ETest` (2 tests):**
+- ✅ **CHẠY ĐƯỢC + PASS** trên Linux/GitLab CI runner (EmbeddedKafka hoạt động bình thường).
+- ⚠️ Trên **Windows local**: EmbeddedKafka không mở được loopback connection → khi cần
+  chạy local trên Windows, dùng lệnh loại trừ tạm thời:
+  ```bash
+  mvn test -Dtest='!AuthFlowE2ETest' -Dsurefire.failIfNoSpecifiedTests=false
+  ```
+  → khi đó: core 8 + auth 41 + user 27 = **76 tests pass**.
+- Đây là giới hạn môi trường Windows, **không phải** E2E bị exclude khỏi pipeline.
+  Pipeline GitLab vẫn chạy đầy đủ 78 tests.
+
+> **So với báo cáo trước (72 tests):** số tăng lên 78 do (1) thêm 8 test
+> `GlobalExceptionHandlerTest` ở core, (2) thêm test assert body JSON cho
+> JWT/rate-limit, (3) E2E giờ được tính vào tổng (chạy trên CI). Đồng thời
+> đã **xóa** `AuthExceptionHandlerTest` (5 tests) khi gộp về handler chung.
 
 ### JaCoCo Coverage Gate
 
@@ -84,16 +102,22 @@ Actual:   All coverage checks have been met ✅
 
 → **Coverage KHÔNG giảm** sau refactor. Tests đầy đủ cover các flow mới (Strategy Pattern, 3 service impl mới, exception handler mới).
 
-### Test breakdown (auth-service)
+### Test breakdown (auth-service) — cập nhật 01/06/2026
 
 | Test class | Count | Pattern |
 |---|---|---|
 | AuthServiceTest (@Nested: Registration/Authentication/RoleMgmt/Password) | 19 | TestDataBuilder + @Nested |
 | AuthControllerTest (@Nested: Register/Login endpoint) | 4 | MockMvc + ApiResponse assertion |
 | AuthServiceIntegrationTest | 2 | Inject `RegistrationService` interface (DIP) |
-| AuthExceptionHandlerTest | 5 | ApiResponse format verification |
-| Other (JwtFilter, RateLimit, Actuator, Kafka, Moderator) | 15 | Existing |
-| **Tổng** | **45** | |
+| JwtFilterTest | 4 | Assert body ApiResponse cho JWT invalid (P1) |
+| RateLimitFilterTest | 7 | Assert body ApiResponse cho 429 (P1) |
+| AuthFlowE2ETest | 2 | E2E (chạy trên CI/Linux) |
+| Other (Actuator, Kafka, Moderator) | 5 | Existing |
+| **Tổng** | **43** | |
+
+> `AuthExceptionHandlerTest` (5 tests) đã **xóa** — handler này gộp về
+> `GlobalExceptionHandler` ở core (xem Section 11, P2). Test tương đương
+> chuyển sang `core/GlobalExceptionHandlerTest` (8 tests).
 
 ### Test breakdown (user-service)
 
@@ -238,10 +262,68 @@ Chi tiết phân loại:
 - Coverage gate ≥ 85% đạt
 - Cấu trúc package theo chức năng (1 package = 1 chức năng = 2 files)
 
-**Sẵn sàng cho thầy review chi tiết.** Code đang ở local + ready commit lên branch `feature/solid-refactor` khi thầy OK.
+**Sẵn sàng cho thầy review chi tiết.**
+
+---
+
+## 11. Follow-up review fixes (01/06/2026)
+
+Xử lý 5 findings trong `docs/review/solid-refactor-review-20260531.md`:
+
+### P1 — Response format consistent ở security filters ✅
+
+**Trước:** `JwtFilter` (cả 2 service) trả plain text `"Invalid or expired token"`;
+`RateLimitFilter` trả JSON thủ công chỉ có `message`.
+
+**Sau:**
+- Tạo `core/response/ApiResponseWriter.java` — helper **dùng chung** cho mọi security
+  filter ghi `ApiResponse` format (DRY giữa auth-service và user-service).
+- `JwtFilter` (auth + user): JWT invalid/expired → `ApiResponse.error(...)` JSON.
+- `RateLimitFilter`: 429 → `ApiResponse.error(...)` JSON đầy đủ `{success,message,timestamp}`.
+- 4 security handler (EntryPoint + AccessDeniedHandler × 2 service) cũng dùng chung
+  `ApiResponseWriter` → loại bỏ code lặp.
+- **Test mới:** assert body JSON có `success=false`/`message`/`timestamp` cho
+  JWT invalid (JwtFilterTest TC049/TC050) và rate limit 429 (RateLimitFilterTest TC107).
+
+### P2 — Exception handler: 1 source of truth ✅
+
+**Trước:** `GlobalExceptionHandler` (core) và `AuthExceptionHandler` (auth-service)
+cùng xử lý duplicate exception → khó biết handler nào là chuẩn.
+
+**Sau:**
+- **Xóa** `AuthExceptionHandler` (auth-service). `GlobalExceptionHandler` ở core là
+  **source of truth duy nhất** cho cả hệ thống (cả 2 service đều `scanBasePackages`
+  gồm `com.r2s.core` nên handler tự active).
+- Thêm `core/GlobalExceptionHandlerTest` (8 tests) verify duplicate→409,
+  bad credentials→401 (generic message no-leak), access denied→403, generic→500.
+
+### P2 — Coverage gate: diễn giải rõ phạm vi ✅
+
+- JaCoCo gate hiện **chỉ đo service/business logic** (exclude `dto/entity/config/
+  security/controller`). Đây là **chủ ý** — không claim coverage bao phủ toàn bộ refactor.
+- Phần controller/security được bảo chứng bằng **integration + smoke tests**
+  (AuthControllerTest, UserControllerTest, ActuatorSecuritySmokeTest, JwtFilterTest,
+  RateLimitFilterTest) assert trực tiếp response body/status.
+- Gate giữ nguyên LINE ≥ 85% cho phần business logic.
+
+### P3 — Report khớp số test thực tế ✅
+
+- Đã cập nhật Section 3: **78 tests** (core 8 + auth 43 + user 27), E2E ghi rõ
+  chạy trên CI/Linux, lệnh loại trừ trên Windows local.
+
+### P3 — Dọn build warnings ✅
+
+- `@MockBean` deprecated → `@MockitoBean` (Spring Boot 3.4) ở 4 test file.
+- `RateLimitFilter`: Bucket4j `Bandwidth.classic()` + `Refill.greedy()` deprecated →
+  `Bandwidth.builder().capacity(...).refillGreedy(...)` (API mới).
+- Hibernate dialect: bỏ `spring.jpa.properties.hibernate.dialect` /
+  `database-platform` explicit ở mọi properties → Hibernate 6 tự detect từ JDBC
+  connection (hết warning HHH90000025).
+
+**Kết quả sau follow-up:** Build SUCCESS, 78/78 tests pass, ít warning hơn.
 
 ---
 
 **Author:** Nguyễn Hiếu An
-**Date:** May 28, 2026
-**Status:** ⏳ Awaiting teacher's final review
+**Date:** May 28, 2026 (updated June 1, 2026)
+**Status:** ✅ Follow-up review fixes applied

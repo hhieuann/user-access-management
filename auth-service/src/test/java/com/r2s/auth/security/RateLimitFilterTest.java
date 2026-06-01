@@ -1,5 +1,7 @@
 package com.r2s.auth.security;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.r2s.core.response.ApiResponseWriter;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
@@ -9,7 +11,6 @@ import org.springframework.mock.web.MockHttpServletRequest;
 import org.springframework.mock.web.MockHttpServletResponse;
 
 import java.lang.reflect.Field;
-import java.lang.reflect.Method;
 import java.time.Instant;
 import java.util.Map;
 
@@ -20,14 +21,19 @@ import static org.mockito.Mockito.*;
 @DisplayName("RateLimitFilter - production hardening")
 class RateLimitFilterTest {
 
+    // findAndRegisterModules() de ObjectMapper ho tro LocalDateTime (JSR310),
+    // giong ObjectMapper ma Spring Boot auto-config trong production.
+    private final ApiResponseWriter apiResponseWriter =
+            new ApiResponseWriter(new ObjectMapper().findAndRegisterModules());
+
     /** Tao filter khong co trusted proxy (default). */
     private RateLimitFilter newFilter() {
-        return new RateLimitFilter("");
+        return new RateLimitFilter("", apiResponseWriter);
     }
 
     /** Tao filter co trusted proxy. */
     private RateLimitFilter newFilterWithProxy(String csv) {
-        return new RateLimitFilter(csv);
+        return new RateLimitFilter(csv, apiResponseWriter);
     }
 
     @Test
@@ -66,6 +72,35 @@ class RateLimitFilterTest {
         filter.doFilterInternal(blocked, blockedRes, chain);
         assertEquals(429, blockedRes.getStatus());
         verify(chain, times(5)).doFilter(any(), any());
+    }
+
+    @Test
+    @DisplayName("TC107 - Rate limit 429 tra ApiResponse format (success/message/timestamp)")
+    void doFilter_OverLimit_ReturnsApiResponseBody() throws Exception {
+        RateLimitFilter filter = newFilter();
+        FilterChain chain = mock(FilterChain.class);
+
+        // Dung het quota
+        for (int i = 0; i < 5; i++) {
+            MockHttpServletRequest req = new MockHttpServletRequest("POST", "/auth/login");
+            req.setRemoteAddr("10.0.0.77");
+            filter.doFilterInternal(req, new MockHttpServletResponse(), chain);
+        }
+        // Lan thu 6 bi block
+        MockHttpServletRequest blocked = new MockHttpServletRequest("POST", "/auth/login");
+        blocked.setRemoteAddr("10.0.0.77");
+        MockHttpServletResponse res = new MockHttpServletResponse();
+        filter.doFilterInternal(blocked, res, chain);
+
+        assertEquals(429, res.getStatus());
+        assertTrue(res.getContentType().contains("application/json"));
+
+        // Verify body theo ApiResponse format
+        String body = res.getContentAsString();
+        assertTrue(body.contains("\"success\":false"), "Body phai co success=false");
+        assertTrue(body.contains("\"message\":\"Too many login attempts. Please try again later.\""),
+                "Body phai co message rate limit");
+        assertTrue(body.contains("\"timestamp\""), "Body phai co timestamp");
     }
 
     @Test

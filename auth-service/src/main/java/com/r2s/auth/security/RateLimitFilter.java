@@ -1,8 +1,8 @@
 package com.r2s.auth.security;
 
+import com.r2s.core.response.ApiResponseWriter;
 import io.github.bucket4j.Bandwidth;
 import io.github.bucket4j.Bucket;
-import io.github.bucket4j.Refill;
 import jakarta.annotation.PreDestroy;
 import jakarta.servlet.FilterChain;
 import jakarta.servlet.ServletException;
@@ -40,6 +40,9 @@ import java.util.concurrent.TimeUnit;
 @Component
 public class RateLimitFilter extends OncePerRequestFilter {
 
+    private static final String RATE_LIMIT_MESSAGE =
+            "Too many login attempts. Please try again later.";
+
     /** Map IP -> bucket entry (bucket + lastAccess time). */
     private final Map<String, BucketEntry> buckets = new ConcurrentHashMap<>();
 
@@ -60,9 +63,14 @@ public class RateLimitFilter extends OncePerRequestFilter {
     /** Danh sach proxy tin cay (CSV). Neu rong, KHONG doc X-Forwarded-For. */
     private final List<String> trustedProxies;
 
+    /** Helper ghi ApiResponse format thong nhat (DRY). */
+    private final ApiResponseWriter apiResponseWriter;
+
     public RateLimitFilter(
-            @Value("${app.rate-limit.trusted-proxies:}") String trustedProxiesCsv) {
+            @Value("${app.rate-limit.trusted-proxies:}") String trustedProxiesCsv,
+            ApiResponseWriter apiResponseWriter) {
         this.trustedProxies = parseTrustedProxies(trustedProxiesCsv);
+        this.apiResponseWriter = apiResponseWriter;
 
         // Don dep bucket het han moi phut.
         cleanupExecutor.scheduleAtFixedRate(
@@ -78,9 +86,11 @@ public class RateLimitFilter extends OncePerRequestFilter {
     }
 
     private Bucket createBucket() {
-        Bandwidth limit = Bandwidth.classic(
-                MAX_REQUESTS_PER_MINUTE,
-                Refill.greedy(MAX_REQUESTS_PER_MINUTE, Duration.ofMinutes(1)));
+        // Bucket4j 8.x builder API (thay cho Bandwidth.classic + Refill.greedy deprecated)
+        Bandwidth limit = Bandwidth.builder()
+                .capacity(MAX_REQUESTS_PER_MINUTE)
+                .refillGreedy(MAX_REQUESTS_PER_MINUTE, Duration.ofMinutes(1))
+                .build();
         return Bucket.builder().addLimit(limit).build();
     }
 
@@ -126,10 +136,9 @@ public class RateLimitFilter extends OncePerRequestFilter {
         if (bucket.tryConsume(1)) {
             filterChain.doFilter(request, response);
         } else {
-            response.setStatus(HttpStatus.TOO_MANY_REQUESTS.value());
-            response.setContentType("application/json");
-            response.getWriter().write(
-                    "{\"message\": \"Too many login attempts. Please try again later.\"}");
+            // Tra 429 ApiResponse format thong nhat (DRY qua ApiResponseWriter)
+            apiResponseWriter.writeError(
+                    response, HttpStatus.TOO_MANY_REQUESTS.value(), RATE_LIMIT_MESSAGE);
         }
     }
 
