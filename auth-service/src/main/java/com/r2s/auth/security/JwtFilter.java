@@ -1,5 +1,6 @@
 package com.r2s.auth.security;
 
+import com.r2s.core.response.ApiResponseWriter;
 import com.r2s.core.security.JwtUtil;
 import io.jsonwebtoken.JwtException;
 import jakarta.servlet.FilterChain;
@@ -18,12 +19,16 @@ import java.io.IOException;
 @Component
 public class JwtFilter extends OncePerRequestFilter {
 
+    private static final String INVALID_TOKEN_MESSAGE = "Invalid or expired token";
+
     private final JwtUtil jwtUtil;
     private final UserDetailsService userDetailsService;
+    private final ApiResponseWriter apiResponseWriter;   // ← dùng chung helper (DRY)
 
-    public JwtFilter(JwtUtil jwtUtil, UserDetailsService uds) {
+    public JwtFilter(JwtUtil jwtUtil, UserDetailsService uds, ApiResponseWriter apiResponseWriter) {
         this.jwtUtil = jwtUtil;
         this.userDetailsService = uds;
+        this.apiResponseWriter = apiResponseWriter;
     }
 
     @Override
@@ -41,9 +46,9 @@ public class JwtFilter extends OncePerRequestFilter {
             try {
                 username = jwtUtil.extractUsername(token);
             } catch (JwtException | IllegalArgumentException e) {
-                // Token lỗi/hết hạn → trả 401, không leak chi tiết
-                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-                response.getWriter().write("Invalid or expired token");
+                // Token lỗi/hết hạn → trả 401 ApiResponse format, không leak chi tiết
+                apiResponseWriter.writeError(
+                        response, HttpServletResponse.SC_UNAUTHORIZED, INVALID_TOKEN_MESSAGE);
                 return;
             }
         }
@@ -57,8 +62,8 @@ public class JwtFilter extends OncePerRequestFilter {
                                 userDetails, null, userDetails.getAuthorities());
                 SecurityContextHolder.getContext().setAuthentication(authToken);
             } else {
-                response.setStatus(HttpServletResponse.SC_UNAUTHORIZED);
-                response.getWriter().write("Invalid or expired token");
+                apiResponseWriter.writeError(
+                        response, HttpServletResponse.SC_UNAUTHORIZED, INVALID_TOKEN_MESSAGE);
                 return;
             }
         }
