@@ -122,7 +122,7 @@ Actual:   All coverage checks have been met ✅
 
 > `AuthExceptionHandlerTest` (5 tests) đã **xóa** — handler này gộp về
 > `GlobalExceptionHandler` ở core (xem Section 11, P2). Test tương đương
-> chuyển sang `core/GlobalExceptionHandlerTest` (8 tests).
+> chuyển sang `core/GlobalExceptionHandlerTest` (10 tests).
 
 ### Test breakdown (user-service)
 
@@ -241,8 +241,13 @@ Mọi test case (happy path + error path) đều verify được:
 
 Chi tiết phân loại:
 - **core module:** ApiResponse, ResponseBuilder, BusinessException, DuplicateUsernameException, DuplicateEmailException, GlobalExceptionHandler (update)
-- **auth-service:** 4 service packages mới (8 files) + AuthController + Strategy + Tests + AuthExceptionHandler
+- **auth-service:** 4 service packages mới (8 files) + AuthController + Strategy + Tests
 - **user-service:** 3 service packages mới (6 files) + UserController + Tests + SecurityConfig
+
+> **Lưu ý (sau follow-up 31/05):** ngoài các file refactor ban đầu, đợt fix follow-up
+> còn **thêm** `ApiResponseWriter` + `GlobalExceptionHandlerTest` (và 4 test core),
+> **xóa** `AuthExceptionHandler` + `AuthExceptionHandlerTest` (gộp về handler chung).
+> Chi tiết ở Section 11.
 
 ---
 
@@ -260,12 +265,13 @@ Chi tiết phân loại:
 
 ## 10. Kết luận
 
-✅ **Refactor hoàn tất theo đúng proposal + feedback thầy.**
+✅ **Refactor hoàn tất theo đúng proposal + feedback thầy + follow-up review 31/05.**
 - Build sạch (BUILD SUCCESS)
-- 72/72 unit + integration tests pass
+- **96/96** unit + integration + E2E tests pass (cập nhật sau follow-up — xem Section 11)
 - 18/18 Postman E2E tests pass
-- Coverage gate ≥ 85% đạt
+- Coverage gate ≥ 85% đạt cả 3 module
 - Cấu trúc package theo chức năng (1 package = 1 chức năng = 2 files)
+- Exception handling tập trung 1 source of truth (xem Section 11 — P2)
 
 **Sẵn sàng cho thầy review chi tiết.**
 
@@ -290,17 +296,60 @@ Xử lý 5 findings trong `docs/review/solid-refactor-review-20260531.md`:
 - **Test mới:** assert body JSON có `success=false`/`message`/`timestamp` cho
   JWT invalid (JwtFilterTest TC049/TC050) và rate limit 429 (RateLimitFilterTest TC107).
 
-### P2 — Exception handler: 1 source of truth ✅
+### P2 — Exception handling bị phân tán và trùng trách nhiệm ✅
 
-**Trước:** `GlobalExceptionHandler` (core) và `AuthExceptionHandler` (auth-service)
-cùng xử lý duplicate exception → khó biết handler nào là chuẩn.
+**Hiện trạng (trước fix):** có 2 `@RestControllerAdvice` xử lý chồng chéo nhau:
 
-**Sau:**
-- **Xóa** `AuthExceptionHandler` (auth-service). `GlobalExceptionHandler` ở core là
-  **source of truth duy nhất** cho cả hệ thống (cả 2 service đều `scanBasePackages`
-  gồm `com.r2s.core` nên handler tự active).
-- Thêm `core/GlobalExceptionHandlerTest` (8 tests) verify duplicate→409,
-  bad credentials→401 (generic message no-leak), access denied→403, generic→500.
+| Exception | GlobalExceptionHandler (core) | AuthExceptionHandler (auth-service) |
+|---|---|---|
+| DuplicateUsernameException | ✅ → 409 | ✅ → 409 (trùng) |
+| DuplicateEmailException | ✅ → 409 | — |
+| BusinessException | ✅ → 400 | — |
+| IllegalArgumentException | ✅ → 400 | ✅ → 400 (trùng) |
+| BadCredentialsException | ✅ → 401 | ✅ → 401 (trùng) |
+| UsernameNotFoundException | ✅ → 401 | ✅ → 401 (trùng) |
+| AccessDeniedException | ✅ → 403 | ✅ → 403 (trùng) |
+
+→ Rủi ro đúng như thầy nêu: giảm lợi ích centralized handling, dễ lệch
+status/message/body khi sửa về sau, khó biết handler nào là source of truth.
+
+**Quyết định:** chọn **Hướng 1 — dùng `GlobalExceptionHandler` ở core làm handler
+chung cho cả hệ thống** (không chọn hướng giữ handler riêng từng service).
+
+**Lý do chọn hướng 1:**
+- `GlobalExceptionHandler` đã cover **đầy đủ** mọi exception mà `AuthExceptionHandler`
+  xử lý (xem bảng trên) → `AuthExceptionHandler` hoàn toàn dư thừa.
+- Cả 2 service đều khai báo `@SpringBootApplication(scanBasePackages = {... "com.r2s.core"})`
+  nên `GlobalExceptionHandler` ở core **tự động active** cho cả auth-service lẫn
+  user-service → 1 nguồn duy nhất, không lệch format giữa các service.
+- auth-service **không có nhu cầu đặc thù** nào cần override handler chung → không
+  có lý do giữ `AuthExceptionHandler`.
+
+**Đã làm:**
+- **Xóa** `auth-service/.../exception/AuthExceptionHandler.java` (+ `AuthExceptionHandlerTest.java`).
+- Verify: toàn hệ thống giờ chỉ còn **1** `@RestControllerAdvice` duy nhất tại
+  `core/GlobalExceptionHandler.java`.
+- (Custom `AuthenticationEntryPoint`/`AccessDeniedHandler` ở security KHÔNG phải
+  `@RestControllerAdvice` — chúng xử lý exception ở tầng filter, không trùng vai trò.)
+
+**Test bổ sung (theo yêu cầu thầy) — `core/GlobalExceptionHandlerTest` (10 tests):**
+
+| Test | Exception | Kỳ vọng |
+|---|---|---|
+| GEH01 | DuplicateUsernameException | 409 Conflict + success=false |
+| GEH02 | DuplicateEmailException | 409 Conflict |
+| GEH03 | BusinessException | 400 Bad Request |
+| GEH04 | IllegalArgumentException | 400 Bad Request |
+| GEH05 | **BadCredentialsException** | **401 + "Invalid username or password" (no info leak)** |
+| GEH06 | UsernameNotFoundException | 401 + generic message |
+| GEH07 | **AccessDeniedException** | **403 Forbidden + "Access denied"** |
+| GEH08 | Generic Exception | 500 + "An unexpected error occurred" (no stacktrace leak) |
+| GEH09 | CustomException (legacy) | 400 Bad Request |
+| GEH10 | Domain exception messages | message + cause đúng |
+
+→ 3 case thầy quan tâm (**duplicate username** GEH01, **bad credentials** GEH05,
+**access denied** GEH07) đều được assert cùng format `ApiResponse` + đúng HTTP status.
+Vì cả 2 service dùng chung handler này nên format/status **đồng nhất** giữa các service.
 
 ### P2 — Coverage gate: diễn giải rõ phạm vi ✅
 
@@ -313,7 +362,7 @@ cùng xử lý duplicate exception → khó biết handler nào là chuẩn.
 
 ### P3 — Report khớp số test thực tế ✅
 
-- Đã cập nhật Section 3: **78 tests** (core 8 + auth 43 + user 27), E2E ghi rõ
+- Đã cập nhật Section 3: **96 tests** (core 26 + auth 43 + user 27), E2E ghi rõ
   chạy trên CI/Linux, lệnh loại trừ trên Windows local.
 
 ### P3 — Dọn build warnings ✅
@@ -325,7 +374,8 @@ cùng xử lý duplicate exception → khó biết handler nào là chuẩn.
   `database-platform` explicit ở mọi properties → Hibernate 6 tự detect từ JDBC
   connection (hết warning HHH90000025).
 
-**Kết quả sau follow-up:** Build SUCCESS, 78/78 tests pass, ít warning hơn.
+**Kết quả sau follow-up:** Build SUCCESS, **96/96 tests pass** (core 26 + auth 43
++ user 27), coverage gate ≥ 85% đạt cả 3 module, ít warning hơn.
 
 ---
 
