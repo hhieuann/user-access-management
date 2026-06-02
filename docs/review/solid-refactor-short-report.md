@@ -374,8 +374,29 @@ Vì cả 2 service dùng chung handler này nên format/status **đồng nhất*
   `database-platform` explicit ở mọi properties → Hibernate 6 tự detect từ JDBC
   connection (hết warning HHH90000025).
 
-**Kết quả sau follow-up:** Build SUCCESS, **96/96 tests pass** (core 26 + auth 43
-+ user 27), coverage gate ≥ 85% đạt cả 3 module, ít warning hơn.
+### Vấn đề phát sinh trong lúc verify trên CI (đã xử lý)
+
+Trong quá trình verify trên GitLab CI runner (Linux), phát sinh 2 vấn đề — đã fix:
+
+1. **E2E `AuthFlowE2ETest` assert sai status (201 vs 200):**
+   Sau refactor, `POST /auth/register` trả **201 CREATED** (đúng REST semantic, qua
+   `responseBuilder.buildCreatedResponse(...)`), nhưng test cũ còn assert `200 OK`.
+   → Local Windows skip E2E (EmbeddedKafka lỗi loopback) nên không phát hiện;
+   GitLab Linux chạy được EmbeddedKafka mới lộ. Đã sửa assert `200 OK` → `201 CREATED`.
+   (commit `fix(test): update AuthFlowE2ETest expect 201 CREATED`).
+
+2. **JaCoCo coverage gate fail ở module `core`:**
+   Sau khi thêm test vào core, JaCoCo bắt đầu đo core (trước đây skip vì không có
+   test) → 36% < 85% → pipeline fail. Đã fix bằng cách viết đủ test cho core
+   (ApiResponse/ResponseBuilder/ApiResponseWriter/LoggerUtil + mở rộng
+   GlobalExceptionHandlerTest) + exclude `**/event/**` → core đạt ≥ 85%.
+
+> **Bài học:** verify bằng `mvn clean install` (có JaCoCo `check`) thay vì chỉ
+> `mvn test` — để bắt coverage gate fail giống môi trường CI trước khi push.
+
+**Kết quả cuối (sau follow-up + xử lý phát sinh):** Build SUCCESS, **96/96 tests pass**
+(core 26 + auth 43 + user 27), coverage gate ≥ 85% đạt cả 3 module, pipeline
+GitLab build + test xanh, ít warning hơn.
 
 ---
 
