@@ -48,3 +48,6 @@ build/
 # Logs
 **/logs/
 *.log
+
+### Claude Code (AI assistant workspace - khong commit) ###
+.claude/
